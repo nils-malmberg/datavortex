@@ -51,11 +51,23 @@ npm run dev
 
 L'application est disponible sur http://localhost:5173 (proxy API configuré vers `http://localhost:8000`).
 
-## Flux utilisateur (Phase 1 - MVP)
+## Flux utilisateur
 
 1. **Accueil** : upload d'un fichier CSV via drag & drop
 2. **Détection du séparateur** : confirmation ou correction du séparateur détecté automatiquement
-3. **Dashboard** : aperçu des données (100 premières lignes) et statistiques descriptives par colonne
+3. **Dashboard** : aperçu des données (100 premières lignes), onglet **Stats**
+   (statistiques descriptives par colonne) et onglet **Visualisations**
+4. **Visualisations** : choix du type de graphique (1D/2D/3D), mapping des
+   colonnes, aperçu interactif en temps réel, export PNG/SVG/HTML
+
+## Visualisations disponibles (Phase 2)
+
+- **1D** : histogramme, box plot, violin plot, densité (KDE), bar chart,
+  pie chart — avec regroupement optionnel par catégorie (`group_by`)
+- **2D** : scatter plot (couleur/taille par colonne), line chart, heatmap
+  de corrélation, hexbin (densité 2D), bar chart groupé, bubble chart
+- **3D** : scatter 3D, surface plot
+- **Export** : PNG et SVG (via kaleido) et HTML interactif (Plotly)
 
 ## Tests manuels effectués (Phase 1)
 
@@ -69,10 +81,31 @@ L'application est disponible sur http://localhost:5173 (proxy API configuré ver
 - Flux complet testé de bout en bout à travers le proxy Vite (upload → parse
   → preview → stats)
 
+## Tests manuels effectués (Phase 2)
+
+Testés avec le jeu de données `iris.csv` (150 lignes, 4 colonnes numériques,
+1 colonne catégorielle `species`) :
+
+- Histogramme de `sepal_length` (bins configurables)
+- Box plot de `sepal_length` groupé par `species` (3 traces, une par espèce)
+- Densité KDE de `sepal_length`
+- Pie chart de `species`
+- Scatter plot `sepal_length` vs `petal_length` coloré par `species`
+- Heatmap de corrélation sur les 4 colonnes numériques
+- Bubble chart et hexbin sur `sepal_length`/`petal_length`
+- Scatter 3D et surface plot sur `sepal_length`/`sepal_width`/`petal_length`
+- Bar chart groupé testé avec un second jeu de données (`region`/`product`)
+  pour valider le regroupement à deux colonnes catégorielles distinctes
+- Export PNG, SVG et HTML d'un graphique, fichiers vérifiés (image PNG
+  valide 900×600, SVG valide, HTML contenant Plotly)
+- Cas d'erreur vérifiés : colonne inexistante, colonne non numérique pour
+  un scatter, bubble chart sans `size_by`, bar groupé avec `x` = `color_by`
+- Flux complet retesté de bout en bout à travers le proxy Vite
+
 ## Roadmap
 
 - **Phase 1 (MVP)** : upload, parsing, détection séparateur, stats descriptives, aperçu tableau ✅
-- **Phase 2** : visualisations interactives (1D, 2D, 3D) avec Plotly
+- **Phase 2** : visualisations interactives (1D, 2D, 3D) avec Plotly, export PNG/SVG/HTML ✅
 - **Phase 3** : filtrage avancé (Filter Builder) et colonnes calculées (formules)
 - **Phase 4** : export avancé, CI/CD (GitHub Actions), documentation, Docker
 
