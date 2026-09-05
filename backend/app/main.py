@@ -1,4 +1,4 @@
-"""DataVortex - Backend FastAPI (Phase 1 MVP).
+"""DataVortex - Backend FastAPI (Phase 1 MVP + Phase 2 Visualisations).
 
 Fonctionnalités :
 - Upload de fichiers (CSV / Excel / JSON) stockés en mémoire par session
@@ -6,10 +6,14 @@ Fonctionnalités :
 - Parsing en DataFrame pandas avec le séparateur choisi/confirmé
 - Aperçu des données (100 premières lignes)
 - Statistiques descriptives par colonne
+- Visualisations interactives 1D / 2D / 3D (Plotly) + export PNG/SVG/HTML
 """
 from __future__ import annotations
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+import json
+from datetime import datetime
+
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.errors import (
@@ -20,7 +24,15 @@ from app.errors import (
     session_not_found,
     unhandled_exception_handler,
 )
-from app.models import ParseRequest, ParseResponse, UploadResponse
+from app.models import (
+    ExportPlotRequest,
+    ParseRequest,
+    ParseResponse,
+    Plot1DRequest,
+    Plot2DRequest,
+    Plot3DRequest,
+    UploadResponse,
+)
 from app.parsing import (
     CANDIDATE_SEPARATORS,
     detect_column_types,
@@ -31,6 +43,7 @@ from app.parsing import (
     parse_excel,
     parse_json,
 )
+from app.plotting import build_1d_figure, build_2d_figure, build_3d_figure
 from app.serialize import dataframe_to_records
 from app.session_store import Session, store
 from app.stats import column_summary, dataframe_summary
@@ -209,3 +222,78 @@ def get_column_stats(session_id: str, col_name: str) -> dict:
         "column": col_name,
         **column_summary(session.df[col_name]),
     }
+
+
+# --- Visualisations (Phase 2) ------------------------------------------------
+
+def _figure_to_response(fig) -> dict:
+    """Sérialise une figure Plotly en JSON-safe via l'encodeur natif de Plotly."""
+    return json.loads(fig.to_json())
+
+
+@app.post("/api/plot/1d")
+def plot_1d(body: Plot1DRequest) -> dict:
+    session = _get_parsed_session_or_error(body.session_id)
+    fig = build_1d_figure(session.df, body)
+    return {"figure": _figure_to_response(fig)}
+
+
+@app.post("/api/plot/2d")
+def plot_2d(body: Plot2DRequest) -> dict:
+    session = _get_parsed_session_or_error(body.session_id)
+    fig = build_2d_figure(session.df, body)
+    return {"figure": _figure_to_response(fig)}
+
+
+@app.post("/api/plot/3d")
+def plot_3d(body: Plot3DRequest) -> dict:
+    session = _get_parsed_session_or_error(body.session_id)
+    fig = build_3d_figure(session.df, body)
+    return {"figure": _figure_to_response(fig)}
+
+
+_PLOT_BUILDERS = {
+    "1d": (Plot1DRequest, build_1d_figure),
+    "2d": (Plot2DRequest, build_2d_figure),
+    "3d": (Plot3DRequest, build_3d_figure),
+}
+
+
+@app.post("/api/export/plot")
+def export_plot(body: ExportPlotRequest) -> Response:
+    session = _get_parsed_session_or_error(body.session_id)
+
+    model_cls, builder = _PLOT_BUILDERS[body.kind]
+    try:
+        params = model_cls(session_id=body.session_id, **body.params)
+    except Exception as exc:
+        raise AppError(400, "INVALID_PLOT_PARAMS", f"Paramètres de graphique invalides : {exc}")
+
+    fig = builder(session.df, params)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%Hh%M")
+    plot_type = body.params.get("plot_type", body.kind)
+    filename = f"plot_{plot_type}_{timestamp}.{body.format}"
+
+    if body.format == "html":
+        html = fig.to_html(full_html=True, include_plotlyjs="cdn")
+        return Response(
+            content=html,
+            media_type="text/html",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    try:
+        image_bytes = fig.to_image(format=body.format, width=body.width, height=body.height)
+    except Exception as exc:
+        raise AppError(
+            500,
+            "EXPORT_FAILED",
+            f"Échec de l'export {body.format.upper()} (moteur kaleido) : {exc}",
+        )
+
+    media_type = "image/svg+xml" if body.format == "svg" else "image/png"
+    return Response(
+        content=image_bytes,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
