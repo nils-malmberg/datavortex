@@ -25,4 +25,24 @@ export function getStats(sessionId) {
   return api.get(`/stats/${sessionId}`)
 }
 
+export function plot1D(sessionId, params) {
+  return api.post('/plot/1d', { session_id: sessionId, ...params })
+}
+
+export function plot2D(sessionId, params) {
+  return api.post('/plot/2d', { session_id: sessionId, ...params })
+}
+
+export function plot3D(sessionId, params) {
+  return api.post('/plot/3d', { session_id: sessionId, ...params })
+}
+
+export function exportPlot(sessionId, kind, params, format) {
+  return api.post(
+    '/export/plot',
+    { session_id: sessionId, kind, params, format },
+    { responseType: 'blob' },
+  )
+}
+
 export default api
