@@ -1,0 +1,36 @@
+name: Docker Build
+
+# Valide que les images Docker backend/frontend se construisent correctement
+# sur main. Ne pousse vers aucun registre et ne déploie nulle part : il n'y a
+# pas encore de credentials de déploiement configurés pour ce projet. À
+# adapter (docker/build-push-action + secrets du registre choisi, ou un
+# provider comme Render/Fly.io/Heroku) quand une cible de déploiement réelle
+# est disponible.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  docker-build:
+    name: Build Docker images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          tags: datavortex-backend:ci
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          tags: datavortex-frontend:ci
