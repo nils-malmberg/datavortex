@@ -1,7 +1,11 @@
-"""Stockage en mémoire des sessions utilisateur (pas de base de données).
+"""Gestionnaire de sessions utilisateur en mémoire (pas de base de données).
 
-Chaque upload crée une session identifiée par un UUID. Les sessions expirent
-après une heure d'inactivité (nettoyage paresseux effectué à chaque upload).
+Chaque upload crée une session identifiée par un UUID, isolée des autres
+(données, filtre actif, colonnes calculées). Permet plusieurs fichiers
+ouverts en parallèle (Phase 5 : onglets multi-fichiers côté frontend).
+Les sessions expirent après une heure d'inactivité (nettoyage paresseux à
+chaque création), et un nombre maximal de sessions simultanées est imposé
+pour borner la mémoire utilisée par le serveur.
 """
 from __future__ import annotations
 
@@ -12,7 +16,10 @@ from typing import Optional
 
 import pandas as pd
 
+from app.errors import AppError
+
 SESSION_TTL_SECONDS = 60 * 60  # 1h d'inactivité
+MAX_SESSIONS = 10  # nombre maximal de fichiers ouverts simultanément
 
 
 @dataclass
@@ -51,6 +58,13 @@ class SessionStore:
         detected_separator: Optional[str],
     ) -> Session:
         self._sweep_expired()
+        if len(self._sessions) >= MAX_SESSIONS:
+            raise AppError(
+                429,
+                "SESSION_LIMIT_REACHED",
+                f"Limite de {MAX_SESSIONS} fichiers ouverts atteinte. "
+                "Fermez un onglet avant d'en ouvrir un nouveau.",
+            )
         session_id = str(uuid.uuid4())
         session = Session(
             session_id=session_id,
@@ -72,6 +86,10 @@ class SessionStore:
             return None
         session.touch()
         return session
+
+    def delete(self, session_id: str) -> None:
+        """Supprime une session immédiatement (ex : fermeture d'un onglet). Idempotent."""
+        self._sessions.pop(session_id, None)
 
     def _sweep_expired(self) -> None:
         now = time.time()

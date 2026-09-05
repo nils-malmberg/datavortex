@@ -39,13 +39,13 @@ export default function ExportPlot({ sessionId, kind, params, disabled }) {
             key={value}
             onClick={() => handleExport(value)}
             disabled={disabled || downloadingFormat !== null}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             {downloadingFormat === value ? 'Export…' : `Télécharger ${label}`}
           </button>
         ))}
       </div>
-      {error && <p className="text-sm text-red-700">{error}</p>}
+      {error && <p className="text-sm text-red-700 dark:text-red-400">{error}</p>}
     </div>
   )
 }

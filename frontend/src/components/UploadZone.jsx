@@ -71,8 +71,8 @@ export default function UploadZone({ onUploaded }) {
         onClick={() => inputRef.current?.click()}
         className={`w-full max-w-xl cursor-pointer rounded-xl border-2 border-dashed p-12 text-center transition-colors ${
           isDragging
-            ? 'border-blue-500 bg-blue-50'
-            : 'border-slate-300 bg-white hover:border-slate-400'
+            ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950/40'
+            : 'border-slate-300 bg-white hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-500'
         }`}
       >
         <input
@@ -82,17 +82,17 @@ export default function UploadZone({ onUploaded }) {
           className="hidden"
           onChange={onInputChange}
         />
-        <p className="text-lg font-medium text-slate-700">
+        <p className="text-lg font-medium text-slate-700 dark:text-slate-200">
           {isUploading
             ? 'Envoi en cours…'
             : 'Glissez-déposez un fichier ici, ou cliquez pour parcourir'}
         </p>
-        <p className="mt-2 text-sm text-slate-500">
+        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
           Formats supportés : CSV, TSV, Excel (.xlsx, .xls), JSON — jusqu&apos;à 100MB
         </p>
       </div>
       {error && (
-        <p className="max-w-xl rounded-md bg-red-50 px-4 py-2 text-sm text-red-700">
+        <p className="max-w-xl rounded-md bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
           {error}
         </p>
       )}

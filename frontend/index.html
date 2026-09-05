@@ -5,6 +5,20 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DataVortex</title>
+    <script>
+      // Applique le thème avant le montage React pour éviter un flash de
+      // mode clair au chargement quand le mode sombre est déjà choisi.
+      (function () {
+        try {
+          var stored = localStorage.getItem('datavortex_theme');
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var isDark = stored ? stored === 'dark' : prefersDark;
+          if (isDark) document.documentElement.classList.add('dark');
+        } catch (e) {
+          // localStorage indisponible : on reste en mode clair par défaut.
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

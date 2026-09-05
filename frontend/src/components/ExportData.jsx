@@ -56,15 +56,15 @@ export default function ExportData({ sessionId, refreshKey }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <p className="text-sm text-slate-600">
+      <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <p className="text-sm text-slate-600 dark:text-slate-300">
           {info ? (
             <>
               Exporte les données actuellement affichées
               {filtered ? (
                 <>
                   {' '}
-                  — <span className="font-medium text-blue-700">{totalRows}</span> ligne(s)
+                  — <span className="font-medium text-blue-700 dark:text-blue-400">{totalRows}</span> ligne(s)
                   filtrée(s) sur {totalRowsUnfiltered}
                 </>
               ) : (
@@ -80,11 +80,11 @@ export default function ExportData({ sessionId, refreshKey }) {
 
       <div className="flex flex-wrap gap-4">
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-slate-600">Séparateur</span>
+          <span className="font-medium text-slate-600 dark:text-slate-300">Séparateur</span>
           <select
             value={separator}
             onChange={(e) => setSeparator(e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-1.5"
+            className="rounded-md border border-slate-300 px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
           >
             {SEPARATORS.map((s) => (
               <option key={s.value} value={s.value}>
@@ -95,11 +95,11 @@ export default function ExportData({ sessionId, refreshKey }) {
         </label>
 
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-slate-600">Encoding</span>
+          <span className="font-medium text-slate-600 dark:text-slate-300">Encoding</span>
           <select
             value={encoding}
             onChange={(e) => setEncoding(e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-1.5"
+            className="rounded-md border border-slate-300 px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
           >
             {ENCODINGS.map((enc) => (
               <option key={enc.value} value={enc.value}>
@@ -110,7 +110,7 @@ export default function ExportData({ sessionId, refreshKey }) {
         </label>
 
         {filtered && (
-          <label className="flex items-center gap-2 self-end pb-1.5 text-sm text-slate-600">
+          <label className="flex items-center gap-2 self-end pb-1.5 text-sm text-slate-600 dark:text-slate-300">
             <input
               type="checkbox"
               checked={includeFilterComment}
@@ -125,14 +125,14 @@ export default function ExportData({ sessionId, refreshKey }) {
         <button
           onClick={handleExport}
           disabled={isExporting}
-          className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
         >
           {isExporting ? 'Export en cours…' : 'Télécharger CSV'}
         </button>
-        {successMessage && <p className="text-sm text-green-700">{successMessage}</p>}
+        {successMessage && <p className="text-sm text-green-700 dark:text-green-400">{successMessage}</p>}
       </div>
 
-      {error && <p className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+      {error && <p className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
     </div>
   )
 }

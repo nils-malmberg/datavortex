@@ -208,12 +208,12 @@ export default function PlotBuilder({ sessionId, refreshKey }) {
   }, [category, plotType, JSON.stringify(params), sessionId, refreshKey])
 
   if (columns.length === 0) {
-    return <p className="p-4 text-sm text-slate-500">Chargement des colonnes…</p>
+    return <p className="p-4 text-sm text-slate-500 dark:text-slate-400">Chargement des colonnes…</p>
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-4">
+      <div className="flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-wrap gap-2">
           {CATEGORIES.map((c) => (
             <button
@@ -221,8 +221,8 @@ export default function PlotBuilder({ sessionId, refreshKey }) {
               onClick={() => handleCategoryChange(c.value)}
               className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                 category === c.value
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'bg-blue-600 text-white dark:bg-blue-500'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
               }`}
             >
               {c.label}
@@ -232,11 +232,11 @@ export default function PlotBuilder({ sessionId, refreshKey }) {
 
         <div className="flex flex-wrap items-end gap-4">
           <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-slate-600">Type de graphique</span>
+            <span className="font-medium text-slate-600 dark:text-slate-300">Type de graphique</span>
             <select
               value={plotType}
               onChange={(e) => handlePlotTypeChange(e.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-1.5"
+              className="rounded-md border border-slate-300 px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
             >
               {PLOT_TYPES[category].map((t) => (
                 <option key={t.value} value={t.value}>
@@ -307,33 +307,33 @@ export default function PlotBuilder({ sessionId, refreshKey }) {
           )}
           {activeConfig.fields.includes('bins') && (
             <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-slate-600">{FIELD_LABELS.bins}</span>
+              <span className="font-medium text-slate-600 dark:text-slate-300">{FIELD_LABELS.bins}</span>
               <input
                 type="number"
                 min={2}
                 max={200}
                 value={params.bins}
                 onChange={(e) => updateParam('bins', Number(e.target.value))}
-                className="w-24 rounded-md border border-slate-300 px-3 py-1.5"
+                className="w-24 rounded-md border border-slate-300 px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
               />
             </label>
           )}
 
           <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-slate-600">Titre (optionnel)</span>
+            <span className="font-medium text-slate-600 dark:text-slate-300">Titre (optionnel)</span>
             <input
               type="text"
               value={params.title}
               onChange={(e) => updateParam('title', e.target.value)}
               placeholder="Titre personnalisé"
-              className="rounded-md border border-slate-300 px-3 py-1.5"
+              className="rounded-md border border-slate-300 px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
             />
           </label>
         </div>
 
         {activeConfig.fields.includes('columns') && (
           <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-slate-600">
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
               {FIELD_LABELS.columns} (par défaut : toutes les colonnes numériques)
             </span>
             <div className="flex flex-wrap gap-2">
@@ -342,8 +342,8 @@ export default function PlotBuilder({ sessionId, refreshKey }) {
                   key={col}
                   className={`cursor-pointer rounded-md border px-2.5 py-1 text-xs font-medium ${
                     params.columns.includes(col)
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-slate-300 bg-white text-slate-600'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-950/40 dark:text-blue-300'
+                      : 'border-slate-300 bg-white text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
                   }`}
                 >
                   <input
@@ -375,11 +375,11 @@ export default function PlotBuilder({ sessionId, refreshKey }) {
 function FieldSelect({ label, value, onChange, options, allowEmpty }) {
   return (
     <label className="flex flex-col gap-1 text-sm">
-      <span className="font-medium text-slate-600">{label}</span>
+      <span className="font-medium text-slate-600 dark:text-slate-300">{label}</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="min-w-[9rem] rounded-md border border-slate-300 px-3 py-1.5"
+        className="min-w-[9rem] rounded-md border border-slate-300 px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
       >
         {allowEmpty && <option value="">—</option>}
         {options.map((col) => (

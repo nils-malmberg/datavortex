@@ -67,4 +67,8 @@ export function exportCsv(sessionId, { separator = ',', encoding = 'utf-8', incl
   )
 }
 
+export function deleteSession(sessionId) {
+  return api.delete(`/session/${sessionId}`)
+}
+
 export default api

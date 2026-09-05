@@ -108,7 +108,7 @@ function ConditionRow({ condition, columns, columnTypes, onChange, onRemove }) {
   const inputType = isNumeric ? 'number' : 'text'
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800">
       <select
         value={condition.column}
         onChange={(e) => {
@@ -116,7 +116,7 @@ function ConditionRow({ condition, columns, columnTypes, onChange, onRemove }) {
           const firstOp = (OPERATORS_BY_CATEGORY[nextCategory] || OPERATORS_BY_CATEGORY.string)[0].value
           onChange({ ...condition, column: e.target.value, operator: firstOp, value: '' })
         }}
-        className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+        className="rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
       >
         {columns.map((c) => (
           <option key={c} value={c}>
@@ -128,7 +128,7 @@ function ConditionRow({ condition, columns, columnTypes, onChange, onRemove }) {
       <select
         value={condition.operator}
         onChange={(e) => onChange({ ...condition, operator: e.target.value, value: '' })}
-        className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+        className="rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
       >
         {operators.map((op) => (
           <option key={op.value} value={op.value}>
@@ -144,15 +144,15 @@ function ConditionRow({ condition, columns, columnTypes, onChange, onRemove }) {
             value={condition.value?.[0] ?? ''}
             onChange={(e) => onChange({ ...condition, value: [e.target.value, condition.value?.[1] ?? ''] })}
             placeholder="min"
-            className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm"
+            className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
           />
-          <span className="text-sm text-slate-500">et</span>
+          <span className="text-sm text-slate-500 dark:text-slate-400">et</span>
           <input
             type={inputType}
             value={condition.value?.[1] ?? ''}
             onChange={(e) => onChange({ ...condition, value: [condition.value?.[0] ?? '', e.target.value] })}
             placeholder="max"
-            className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm"
+            className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
           />
         </div>
       ) : LIST_OPS.has(condition.operator) ? (
@@ -161,7 +161,7 @@ function ConditionRow({ condition, columns, columnTypes, onChange, onRemove }) {
           value={condition.value ?? ''}
           onChange={(e) => onChange({ ...condition, value: e.target.value })}
           placeholder="valeur1, valeur2, ..."
-          className="w-48 rounded-md border border-slate-300 px-2 py-1 text-sm"
+          className="w-48 rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
         />
       ) : (
         <input
@@ -169,13 +169,13 @@ function ConditionRow({ condition, columns, columnTypes, onChange, onRemove }) {
           value={condition.value ?? ''}
           onChange={(e) => onChange({ ...condition, value: e.target.value })}
           placeholder="valeur"
-          className="w-36 rounded-md border border-slate-300 px-2 py-1 text-sm"
+          className="w-36 rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
         />
       )}
 
       <button
         onClick={onRemove}
-        className="ml-auto rounded-md px-2 py-1 text-sm text-red-600 hover:bg-red-50"
+        className="ml-auto rounded-md px-2 py-1 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
         aria-label="Supprimer cette condition"
       >
         ✕
@@ -267,25 +267,25 @@ export default function FilterBuilder({ sessionId, onFilterApplied }) {
   }, [JSON.stringify(payload), sessionId])
 
   if (columns.length === 0) {
-    return <p className="p-4 text-sm text-slate-500">Chargement des colonnes…</p>
+    return <p className="p-4 text-sm text-slate-500 dark:text-slate-400">Chargement des colonnes…</p>
   }
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-slate-600">Combiner avec :</span>
+          <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Combiner avec :</span>
           <select
             value={logic}
             onChange={(e) => setLogic(e.target.value)}
             disabled={conditions.length < 2}
-            className="rounded-md border border-slate-300 px-2 py-1 text-sm disabled:opacity-50"
+            className="rounded-md border border-slate-300 px-2 py-1 text-sm disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
           >
             <option value="AND">ET (toutes les conditions)</option>
             <option value="OR">OU (au moins une condition)</option>
           </select>
         </div>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           {result
             ? `${result.total_rows} ligne(s) sélectionnée(s) sur ${result.total_rows_unfiltered} au total`
             : `${conditions.length === 0 ? 'Aucun filtre actif' : ''}`}
@@ -308,21 +308,21 @@ export default function FilterBuilder({ sessionId, onFilterApplied }) {
       <div className="flex gap-2">
         <button
           onClick={addCondition}
-          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
         >
           + Ajouter une condition
         </button>
         <button
           onClick={resetFilters}
           disabled={conditions.length === 0}
-          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
         >
           Réinitialiser
         </button>
-        {isLoading && <span className="self-center text-sm text-slate-400">Application du filtre…</span>}
+        {isLoading && <span className="self-center text-sm text-slate-400 dark:text-slate-500">Application du filtre…</span>}
       </div>
 
-      {error && <p className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+      {error && <p className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
     </div>
   )
 }

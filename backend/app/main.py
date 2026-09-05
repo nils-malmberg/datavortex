@@ -91,6 +91,13 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.delete("/api/session/{session_id}")
+def delete_session(session_id: str) -> dict:
+    """Libère une session immédiatement (ex : fermeture d'un onglet côté frontend)."""
+    store.delete(session_id)
+    return {"deleted": True}
+
+
 @app.post("/api/upload", response_model=UploadResponse)
 async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
     raw_bytes = await file.read()
