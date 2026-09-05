@@ -72,7 +72,7 @@ const DEFAULT_PARAMS = {
 // bloque silencieusement la génération du graphique.
 const REQUIRE_REAL_VALUE = ['column', 'x', 'y', 'z']
 
-export default function PlotBuilder({ sessionId }) {
+export default function PlotBuilder({ sessionId, refreshKey }) {
   const [columns, setColumns] = useState([])
   const [columnTypes, setColumnTypes] = useState({})
   const [category, setCategory] = useState('2d')
@@ -88,7 +88,7 @@ export default function PlotBuilder({ sessionId }) {
       setColumns(data.columns)
       setColumnTypes(data.column_types)
     })
-  }, [sessionId])
+  }, [sessionId, refreshKey])
 
   const numericColumns = useMemo(
     () => columns.filter((c) => NUMERIC_TYPES.includes(columnTypes[c])),
@@ -205,7 +205,7 @@ export default function PlotBuilder({ sessionId }) {
 
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, plotType, JSON.stringify(params), sessionId])
+  }, [category, plotType, JSON.stringify(params), sessionId, refreshKey])
 
   if (columns.length === 0) {
     return <p className="p-4 text-sm text-slate-500">Chargement des colonnes…</p>

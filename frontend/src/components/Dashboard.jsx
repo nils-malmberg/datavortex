@@ -2,15 +2,21 @@ import { useState } from 'react'
 import DataPreview from './DataPreview'
 import StatsPanel from './StatsPanel'
 import PlotBuilder from './PlotBuilder'
+import FilterBuilder from './FilterBuilder'
+import ColumnCreator from './ColumnCreator'
 
 const TABS = [
   { value: 'stats', label: 'Stats' },
   { value: 'plots', label: 'Visualisations' },
+  { value: 'filters', label: 'Filtres' },
+  { value: 'columns', label: 'Colonnes calculées' },
 ]
 
 export default function Dashboard({ parseResult, filename, onReset }) {
   const { session_id: sessionId, n_rows: nRows, n_columns: nColumns, separator } = parseResult
   const [activeTab, setActiveTab] = useState('stats')
+  const [dataVersion, setDataVersion] = useState(0)
+  const bumpDataVersion = () => setDataVersion((v) => v + 1)
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-8 p-8">
@@ -30,7 +36,7 @@ export default function Dashboard({ parseResult, filename, onReset }) {
         </button>
       </div>
 
-      <DataPreview sessionId={sessionId} />
+      <DataPreview sessionId={sessionId} refreshKey={dataVersion} />
 
       <div className="flex flex-col gap-4">
         <div className="flex gap-2 border-b border-slate-200">
@@ -49,8 +55,14 @@ export default function Dashboard({ parseResult, filename, onReset }) {
           ))}
         </div>
 
-        {activeTab === 'stats' && <StatsPanel sessionId={sessionId} />}
-        {activeTab === 'plots' && <PlotBuilder sessionId={sessionId} />}
+        {activeTab === 'stats' && <StatsPanel sessionId={sessionId} refreshKey={dataVersion} />}
+        {activeTab === 'plots' && <PlotBuilder sessionId={sessionId} refreshKey={dataVersion} />}
+        {activeTab === 'filters' && (
+          <FilterBuilder sessionId={sessionId} onFilterApplied={bumpDataVersion} />
+        )}
+        {activeTab === 'columns' && (
+          <ColumnCreator sessionId={sessionId} onColumnCreated={bumpDataVersion} />
+        )}
       </div>
     </div>
   )

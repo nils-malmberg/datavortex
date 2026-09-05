@@ -45,4 +45,18 @@ export function exportPlot(sessionId, kind, params, format) {
   )
 }
 
+export function applyFilter(sessionId, filter) {
+  return api.post(`/data/${sessionId}/filter`, { filter })
+}
+
+export function createColumn(sessionId, { name, formula, overwrite = false, previewOnly = false, previewRows = 10 }) {
+  return api.post(`/data/${sessionId}/columns`, {
+    name,
+    formula,
+    overwrite,
+    preview_only: previewOnly,
+    preview_rows: previewRows,
+  })
+}
+
 export default api

@@ -90,7 +90,7 @@ function ColumnCard({ name, summary }) {
   )
 }
 
-export default function StatsPanel({ sessionId }) {
+export default function StatsPanel({ sessionId, refreshKey }) {
   const [summary, setSummary] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -116,7 +116,7 @@ export default function StatsPanel({ sessionId }) {
     return () => {
       cancelled = true
     }
-  }, [sessionId])
+  }, [sessionId, refreshKey])
 
   if (loading) {
     return <p className="p-4 text-sm text-slate-500">Calcul des statistiques…</p>
@@ -126,12 +126,19 @@ export default function StatsPanel({ sessionId }) {
   }
   if (!summary) return null
 
-  const { columns, n_rows: nRows, n_columns: nColumns, memory_usage_bytes: memoryBytes } = summary
+  const { columns, n_rows: nRows, n_columns: nColumns, memory_usage_bytes: memoryBytes, filtered } = summary
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between">
-        <h3 className="text-lg font-semibold text-slate-800">Statistiques par colonne</h3>
+        <h3 className="text-lg font-semibold text-slate-800">
+          Statistiques par colonne
+          {filtered && (
+            <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+              filtré
+            </span>
+          )}
+        </h3>
         <p className="text-sm text-slate-500">
           {nRows} lignes × {nColumns} colonnes — {(memoryBytes / 1024).toFixed(1)} KB en mémoire
         </p>

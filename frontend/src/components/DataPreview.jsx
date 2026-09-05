@@ -11,7 +11,7 @@ function formatCell(value) {
   return String(value)
 }
 
-export default function DataPreview({ sessionId }) {
+export default function DataPreview({ sessionId, refreshKey }) {
   const [preview, setPreview] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -37,7 +37,7 @@ export default function DataPreview({ sessionId }) {
     return () => {
       cancelled = true
     }
-  }, [sessionId])
+  }, [sessionId, refreshKey])
 
   if (loading) {
     return <p className="p-4 text-sm text-slate-500">Chargement de l&apos;aperçu…</p>
@@ -47,12 +47,27 @@ export default function DataPreview({ sessionId }) {
   }
   if (!preview) return null
 
-  const { columns, column_types: columnTypes, rows, total_rows: totalRows, shown_rows: shownRows } = preview
+  const {
+    columns,
+    column_types: columnTypes,
+    rows,
+    total_rows: totalRows,
+    shown_rows: shownRows,
+    filtered,
+    total_rows_unfiltered: totalRowsUnfiltered,
+  } = preview
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <h3 className="text-lg font-semibold text-slate-800">Aperçu des données</h3>
+        <h3 className="text-lg font-semibold text-slate-800">
+          Aperçu des données
+          {filtered && (
+            <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+              filtré : {totalRows}/{totalRowsUnfiltered}
+            </span>
+          )}
+        </h3>
         <p className="text-sm text-slate-500">
           Affichage de {shownRows} ligne(s) sur {totalRows} au total
         </p>
