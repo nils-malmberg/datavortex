@@ -10,11 +10,12 @@ Fonctionnalités :
 """
 from __future__ import annotations
 
+import io
 import json
 from datetime import datetime
 
 import pandas as pd
-from fastapi import FastAPI, File, HTTPException, Response, UploadFile
+from fastapi import FastAPI, File, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.errors import (
@@ -30,6 +31,7 @@ from app.formulas import evaluate_formula
 from app.models import (
     ApplyFilterRequest,
     CreateColumnRequest,
+    ExportCsvRequest,
     ExportPlotRequest,
     ParseRequest,
     ParseResponse,
@@ -341,6 +343,37 @@ _PLOT_BUILDERS = {
     "2d": (Plot2DRequest, build_2d_figure),
     "3d": (Plot3DRequest, build_3d_figure),
 }
+
+
+# --- Export (Phase 4) --------------------------------------------------------
+
+@app.post("/api/export/csv")
+def export_csv(body: ExportCsvRequest) -> Response:
+    session = _get_parsed_session_or_error(body.session_id)
+    df = session.active_df()
+
+    if not body.separator:
+        raise AppError(400, "MISSING_SEPARATOR", "Le séparateur d'export est requis.")
+
+    buffer = io.StringIO()
+    if body.include_filter_comment and session.active_filter is not None:
+        filter_json = json.dumps(session.active_filter.model_dump(), ensure_ascii=False)
+        buffer.write(f"# Filtre appliqué : {filter_json}\n")
+    df.to_csv(buffer, sep=body.separator, index=False)
+    text = buffer.getvalue()
+
+    try:
+        encoded = text.encode(body.encoding)
+    except LookupError:
+        raise AppError(400, "INVALID_ENCODING", f"Encoding inconnu : '{body.encoding}'.")
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%Hh%M")
+    filename = f"data_{timestamp}.csv"
+    return Response(
+        content=encoded,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.post("/api/export/plot")

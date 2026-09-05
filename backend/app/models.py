@@ -104,3 +104,12 @@ class CreateColumnRequest(BaseModel):
     overwrite: bool = False
     preview_only: bool = False
     preview_rows: int = 10
+
+
+# --- Export (Phase 4) --------------------------------------------------------
+
+class ExportCsvRequest(BaseModel):
+    session_id: str
+    separator: str = ","
+    encoding: str = "utf-8"
+    include_filter_comment: bool = True

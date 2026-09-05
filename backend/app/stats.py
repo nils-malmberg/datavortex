@@ -4,7 +4,6 @@ from __future__ import annotations
 import math
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from app.parsing import detect_column_type
