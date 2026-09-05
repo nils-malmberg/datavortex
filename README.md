@@ -59,6 +59,10 @@ L'application est disponible sur http://localhost:5173 (proxy API configuré ver
    (statistiques descriptives par colonne) et onglet **Visualisations**
 4. **Visualisations** : choix du type de graphique (1D/2D/3D), mapping des
    colonnes, aperçu interactif en temps réel, export PNG/SVG/HTML
+5. **Filtres** : conditions combinées en ET/OU, appliquées en temps réel à
+   l'aperçu, aux stats et aux graphiques
+6. **Colonnes calculées** : formules avec référence aux colonnes (`{col}`),
+   opérateurs et fonctions, aperçu avant validation
 
 ## Visualisations disponibles (Phase 2)
 
@@ -68,6 +72,20 @@ L'application est disponible sur http://localhost:5173 (proxy API configuré ver
   de corrélation, hexbin (densité 2D), bar chart groupé, bubble chart
 - **3D** : scatter 3D, surface plot
 - **Export** : PNG et SVG (via kaleido) et HTML interactif (Plotly)
+
+## Filtrage & colonnes calculées (Phase 3)
+
+- **Filtres** : opérateurs numériques (`=`, `≠`, `>`, `<`, `≥`, `≤`, `entre`,
+  `dans/hors liste`), texte (`contient`, `commence/finit par`, `regex`),
+  booléens, dates (`année/mois/jour`), valeurs manquantes — combinés en
+  ET/OU. Un filtre actif s'applique automatiquement à l'aperçu, aux stats
+  et aux graphiques (le dataset original reste intact).
+- **Colonnes calculées** : moteur de formules sûr (parsing AST Python, sans
+  `eval`/`exec`) supportant `+ - * / % **`, comparaisons, `and/or/not`,
+  fonctions mathématiques (`abs`, `round`, `sqrt`, `log`, trigonométrie...),
+  fonctions texte (`upper`, `lower`, `concat`, `replace`, `substring`...) et
+  `if(condition, si_vrai, si_faux)`. Aperçu sur les premières lignes avant
+  d'ajouter définitivement la colonne.
 
 ## Tests manuels effectués (Phase 1)
 
@@ -102,11 +120,32 @@ Testés avec le jeu de données `iris.csv` (150 lignes, 4 colonnes numériques,
   un scatter, bubble chart sans `size_by`, bar groupé avec `x` = `color_by`
 - Flux complet retesté de bout en bout à travers le proxy Vite
 
+## Tests manuels effectués (Phase 3)
+
+Testés dans un vrai navigateur (Playwright + Chromium) avec `iris.csv` :
+
+- Filtre simple (`species = setosa`) : 50/150 lignes, badge "filtré" affiché
+  et synchronisé dans l'aperçu, les stats et les graphiques
+- Filtre imbriqué ET (`sepal_length > 5 ET species = setosa`) et opérateur
+  `in` (`species in [setosa, virginica]`) vérifiés via curl
+- Réinitialisation du filtre (retour à 150/150)
+- Colonne calculée `sepal_area = {sepal_length} * {sepal_width}` : aperçu
+  live puis ajout définitif, visible immédiatement dans l'aperçu et les
+  stats sans perdre le filtre actif
+- Formule conditionnelle `if({sepal_length} > 5.5, "big", "small")` :
+  aperçu live correct
+- Fonctions `upper()`, `round(sqrt(...), 2)` vérifiées via curl
+- Erreurs vérifiées : colonne inconnue dans une formule, nom de colonne
+  dupliqué (bloqué sauf `overwrite`), division par zéro (gérée ligne par
+  ligne sans interrompre le calcul)
+- Tentatives d'échapper au bac à sable de formules (`__import__`, accès
+  `__class__`, list comprehension, `lambda`) toutes rejetées
+
 ## Roadmap
 
 - **Phase 1 (MVP)** : upload, parsing, détection séparateur, stats descriptives, aperçu tableau ✅
 - **Phase 2** : visualisations interactives (1D, 2D, 3D) avec Plotly, export PNG/SVG/HTML ✅
-- **Phase 3** : filtrage avancé (Filter Builder) et colonnes calculées (formules)
+- **Phase 3** : filtrage avancé (Filter Builder) et colonnes calculées (formules) ✅
 - **Phase 4** : export avancé, CI/CD (GitHub Actions), documentation, Docker
 
 Voir le dossier [`specs/`](../specs) pour le détail complet des spécifications.
