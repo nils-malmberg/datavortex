@@ -64,9 +64,21 @@ function newCondition(column) {
   return { id: nextId++, column, operator: 'eq', value: '' }
 }
 
+function isConditionComplete(condition) {
+  if (NO_VALUE_OPS.has(condition.operator)) return true
+  if (RANGE_OPS.has(condition.operator)) {
+    const [lo, hi] = Array.isArray(condition.value) ? condition.value : []
+    return lo !== undefined && lo !== '' && hi !== undefined && hi !== ''
+  }
+  if (LIST_OPS.has(condition.operator)) {
+    return String(condition.value || '').trim() !== ''
+  }
+  return condition.value !== '' && condition.value !== undefined && condition.value !== null
+}
+
 function buildPayload(logic, conditions, columnTypes) {
   const built = conditions
-    .filter((c) => c.column)
+    .filter((c) => c.column && isConditionComplete(c))
     .map((c) => {
       const category = categoryFor(columnTypes[c.column])
       let value = c.value

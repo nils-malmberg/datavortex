@@ -1,16 +1,12 @@
 import { useState } from 'react'
 import { exportPlot } from '../api/client'
+import { extractFilename, triggerBlobDownload } from '../api/download'
 
 const FORMATS = [
   { value: 'png', label: 'PNG' },
   { value: 'svg', label: 'SVG' },
   { value: 'html', label: 'HTML interactif' },
 ]
-
-function extractFilename(contentDisposition, fallback) {
-  const match = /filename="?([^"]+)"?/.exec(contentDisposition || '')
-  return match ? match[1] : fallback
-}
 
 export default function ExportPlot({ sessionId, kind, params, disabled }) {
   const [downloadingFormat, setDownloadingFormat] = useState(null)
@@ -25,14 +21,7 @@ export default function ExportPlot({ sessionId, kind, params, disabled }) {
         response.headers['content-disposition'],
         `plot.${format}`,
       )
-      const url = window.URL.createObjectURL(response.data)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
+      triggerBlobDownload(response.data, filename)
     } catch (err) {
       setError(
         "Impossible d'exporter le graphique dans ce format pour le moment.",

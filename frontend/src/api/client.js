@@ -59,4 +59,12 @@ export function createColumn(sessionId, { name, formula, overwrite = false, prev
   })
 }
 
+export function exportCsv(sessionId, { separator = ',', encoding = 'utf-8', includeFilterComment = true } = {}) {
+  return api.post(
+    '/export/csv',
+    { session_id: sessionId, separator, encoding, include_filter_comment: includeFilterComment },
+    { responseType: 'blob' },
+  )
+}
+
 export default api

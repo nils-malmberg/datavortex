@@ -4,12 +4,14 @@ import StatsPanel from './StatsPanel'
 import PlotBuilder from './PlotBuilder'
 import FilterBuilder from './FilterBuilder'
 import ColumnCreator from './ColumnCreator'
+import ExportData from './ExportData'
 
 const TABS = [
   { value: 'stats', label: 'Stats' },
   { value: 'plots', label: 'Visualisations' },
   { value: 'filters', label: 'Filtres' },
   { value: 'columns', label: 'Colonnes calculées' },
+  { value: 'export', label: 'Export' },
 ]
 
 export default function Dashboard({ parseResult, filename, onReset }) {
@@ -63,6 +65,7 @@ export default function Dashboard({ parseResult, filename, onReset }) {
         {activeTab === 'columns' && (
           <ColumnCreator sessionId={sessionId} onColumnCreated={bumpDataVersion} />
         )}
+        {activeTab === 'export' && <ExportData sessionId={sessionId} refreshKey={dataVersion} />}
       </div>
     </div>
   )
