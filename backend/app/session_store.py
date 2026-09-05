@@ -25,11 +25,17 @@ class Session:
     detected_separator: Optional[str] = None
     separator: Optional[str] = None
     df: Optional[pd.DataFrame] = None
+    active_filter: Optional[object] = None
+    filtered_df: Optional[pd.DataFrame] = None
     created_at: float = field(default_factory=time.time)
     last_accessed: float = field(default_factory=time.time)
 
     def touch(self) -> None:
         self.last_accessed = time.time()
+
+    def active_df(self) -> pd.DataFrame:
+        """Le DataFrame courant : filtré si un filtre est actif, sinon complet."""
+        return self.filtered_df if self.filtered_df is not None else self.df
 
 
 class SessionStore:

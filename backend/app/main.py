@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
+import pandas as pd
 from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -24,7 +25,11 @@ from app.errors import (
     session_not_found,
     unhandled_exception_handler,
 )
+from app.filtering import evaluate_filter
+from app.formulas import evaluate_formula
 from app.models import (
+    ApplyFilterRequest,
+    CreateColumnRequest,
     ExportPlotRequest,
     ParseRequest,
     ParseResponse,
@@ -190,7 +195,7 @@ def parse_session(body: ParseRequest) -> ParseResponse:
 @app.get("/api/data/{session_id}/preview")
 def get_preview(session_id: str, rows: int = PREVIEW_ROWS) -> dict:
     session = _get_parsed_session_or_error(session_id)
-    df = session.df
+    df = session.active_df()
     limited = df.head(rows)
     return {
         "session_id": session_id,
@@ -200,27 +205,106 @@ def get_preview(session_id: str, rows: int = PREVIEW_ROWS) -> dict:
         "total_rows": int(df.shape[0]),
         "total_columns": int(df.shape[1]),
         "shown_rows": int(limited.shape[0]),
+        "filtered": session.filtered_df is not None,
+        "total_rows_unfiltered": int(session.df.shape[0]),
     }
 
 
 @app.get("/api/stats/{session_id}")
 def get_stats(session_id: str) -> dict:
     session = _get_parsed_session_or_error(session_id)
-    summary = dataframe_summary(session.df)
+    summary = dataframe_summary(session.active_df())
     summary["session_id"] = session_id
     summary["filename"] = session.filename
+    summary["filtered"] = session.filtered_df is not None
     return summary
 
 
 @app.get("/api/column/{session_id}/{col_name}/stats")
 def get_column_stats(session_id: str, col_name: str) -> dict:
     session = _get_parsed_session_or_error(session_id)
-    if col_name not in session.df.columns:
+    df = session.active_df()
+    if col_name not in df.columns:
         raise column_not_found(col_name)
     return {
         "session_id": session_id,
         "column": col_name,
-        **column_summary(session.df[col_name]),
+        **column_summary(df[col_name]),
+    }
+
+
+# --- Filtrage & Colonnes calculées (Phase 3) ---------------------------------
+
+@app.post("/api/data/{session_id}/filter")
+def apply_filter(session_id: str, body: ApplyFilterRequest) -> dict:
+    session = _get_parsed_session_or_error(session_id)
+
+    if body.filter is None:
+        session.active_filter = None
+        session.filtered_df = None
+    else:
+        mask = evaluate_filter(session.df, body.filter)
+        session.active_filter = body.filter
+        session.filtered_df = session.df[mask]
+    session.touch()
+
+    df = session.active_df()
+    limited = df.head(PREVIEW_ROWS)
+    return {
+        "session_id": session_id,
+        "filtered": session.filtered_df is not None,
+        "columns": [str(c) for c in df.columns],
+        "column_types": detect_column_types(df),
+        "rows": dataframe_to_records(limited),
+        "total_rows": int(df.shape[0]),
+        "total_rows_unfiltered": int(session.df.shape[0]),
+        "total_columns": int(df.shape[1]),
+        "shown_rows": int(limited.shape[0]),
+    }
+
+
+@app.post("/api/data/{session_id}/columns")
+def create_column(session_id: str, body: CreateColumnRequest) -> dict:
+    session = _get_parsed_session_or_error(session_id)
+
+    if not body.name.strip():
+        raise AppError(400, "INVALID_COLUMN_NAME", "Le nom de la colonne est requis.")
+
+    if body.preview_only:
+        base_df = session.active_df().head(max(1, body.preview_rows))
+        result, error_count = evaluate_formula(base_df, body.formula)
+        return {
+            "session_id": session_id,
+            "preview": [None if pd.isna(v) else v for v in result.tolist()] if len(result) else [],
+            "error_count": error_count,
+        }
+
+    if body.name in session.df.columns and not body.overwrite:
+        raise AppError(
+            409,
+            "COLUMN_ALREADY_EXISTS",
+            f"La colonne '{body.name}' existe déjà. Utilisez 'overwrite' pour la remplacer.",
+        )
+
+    result, error_count = evaluate_formula(session.df, body.formula)
+    session.df[body.name] = result
+
+    if session.active_filter is not None:
+        mask = evaluate_filter(session.df, session.active_filter)
+        session.filtered_df = session.df[mask]
+
+    session.touch()
+    df = session.active_df()
+
+    return {
+        "session_id": session_id,
+        "name": body.name,
+        "error_count": error_count,
+        "columns": [str(c) for c in session.df.columns],
+        "column_types": detect_column_types(session.df),
+        "n_rows": int(session.df.shape[0]),
+        "n_columns": int(session.df.shape[1]),
+        "preview": dataframe_to_records(df.head(10)),
     }
 
 
@@ -234,21 +318,21 @@ def _figure_to_response(fig) -> dict:
 @app.post("/api/plot/1d")
 def plot_1d(body: Plot1DRequest) -> dict:
     session = _get_parsed_session_or_error(body.session_id)
-    fig = build_1d_figure(session.df, body)
+    fig = build_1d_figure(session.active_df(), body)
     return {"figure": _figure_to_response(fig)}
 
 
 @app.post("/api/plot/2d")
 def plot_2d(body: Plot2DRequest) -> dict:
     session = _get_parsed_session_or_error(body.session_id)
-    fig = build_2d_figure(session.df, body)
+    fig = build_2d_figure(session.active_df(), body)
     return {"figure": _figure_to_response(fig)}
 
 
 @app.post("/api/plot/3d")
 def plot_3d(body: Plot3DRequest) -> dict:
     session = _get_parsed_session_or_error(body.session_id)
-    fig = build_3d_figure(session.df, body)
+    fig = build_3d_figure(session.active_df(), body)
     return {"figure": _figure_to_response(fig)}
 
 
@@ -269,7 +353,7 @@ def export_plot(body: ExportPlotRequest) -> Response:
     except Exception as exc:
         raise AppError(400, "INVALID_PLOT_PARAMS", f"Paramètres de graphique invalides : {exc}")
 
-    fig = builder(session.df, params)
+    fig = builder(session.active_df(), params)
     timestamp = datetime.now().strftime("%Y-%m-%d_%Hh%M")
     plot_type = body.params.get("plot_type", body.kind)
     filename = f"plot_{plot_type}_{timestamp}.{body.format}"

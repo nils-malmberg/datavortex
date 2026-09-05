@@ -1,6 +1,6 @@
-from typing import Literal, Optional
+from typing import Annotated, Any, Literal, Optional, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ParseRequest(BaseModel):
@@ -73,3 +73,34 @@ class ExportPlotRequest(BaseModel):
     format: Literal["png", "svg", "html"]
     width: int = 900
     height: int = 600
+
+
+# --- Filtrage & Colonnes calculées (Phase 3) ---------------------------------
+
+class FilterCondition(BaseModel):
+    type: Literal["condition"] = "condition"
+    column: str
+    operator: str
+    value: Optional[Any] = None
+
+
+class FilterGroup(BaseModel):
+    type: Literal["group"] = "group"
+    logic: Literal["AND", "OR"] = "AND"
+    conditions: list["FilterNode"] = []
+
+
+FilterNode = Annotated[Union[FilterCondition, FilterGroup], Field(discriminator="type")]
+FilterGroup.model_rebuild()
+
+
+class ApplyFilterRequest(BaseModel):
+    filter: Optional[FilterNode] = None
+
+
+class CreateColumnRequest(BaseModel):
+    name: str
+    formula: str
+    overwrite: bool = False
+    preview_only: bool = False
+    preview_rows: int = 10
