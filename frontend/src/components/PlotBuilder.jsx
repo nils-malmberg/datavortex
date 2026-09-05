@@ -65,6 +65,13 @@ const DEFAULT_PARAMS = {
   color_by: '', size_by: '', columns: [], bins: 20, title: '',
 }
 
+// Champs dont la valeur doit toujours pointer vers une colonne réelle (pas de
+// valeur vide) : un <select> contrôlé sans option "" désélectionne l'état
+// React alors que le navigateur affiche quand même une colonne par défaut,
+// ce qui désynchronise l'UI (colonne visible) de l'état (toujours vide) et
+// bloque silencieusement la génération du graphique.
+const REQUIRE_REAL_VALUE = ['column', 'x', 'y', 'z']
+
 export default function PlotBuilder({ sessionId }) {
   const [columns, setColumns] = useState([])
   const [columnTypes, setColumnTypes] = useState({})
@@ -100,12 +107,51 @@ export default function PlotBuilder({ sessionId }) {
 
   const activeConfig = PLOT_TYPES[category].find((t) => t.value === plotType)
 
+  // Calcule des valeurs par défaut valides pour les champs "column"/"x"/"y"/"z"
+  // du type de graphique donné, en conservant la valeur actuelle si elle est
+  // toujours compatible, sinon en choisissant la première colonne compatible.
+  const deriveParams = (targetCategory, targetPlotType, prevParams) => {
+    const config = PLOT_TYPES[targetCategory].find((t) => t.value === targetPlotType)
+    const next = { ...prevParams }
+    for (const field of REQUIRE_REAL_VALUE) {
+      if (!config.fields.includes(field)) continue
+      const filterType = columnFilterFor(field, targetPlotType)
+      const options = columnOptionsFor(filterType)
+      next[field] = options.includes(prevParams[field]) ? prevParams[field] : (options[0] || '')
+    }
+    // Évite un scatter/line dégénéré avec x === y quand plusieurs colonnes existent.
+    if (config.fields.includes('x') && config.fields.includes('y') && next.x && next.x === next.y) {
+      const alt = columnOptionsFor(columnFilterFor('y', targetPlotType)).find((c) => c !== next.x)
+      if (alt) next.y = alt
+    }
+    // Pour le 3D, essaie d'avoir x/y/z distincts quand assez de colonnes existent.
+    if (config.fields.includes('z')) {
+      const optionsZ = columnOptionsFor(columnFilterFor('z', targetPlotType))
+      if (!next.z || next.z === next.x || next.z === next.y) {
+        next.z = optionsZ.find((c) => c !== next.x && c !== next.y) || next.z || optionsZ[0] || ''
+      }
+    }
+    return next
+  }
+
+  useEffect(() => {
+    if (columns.length === 0) return
+    setParams((prev) => deriveParams(category, plotType, prev))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columns])
+
   const updateParam = (key, value) => setParams((prev) => ({ ...prev, [key]: value }))
 
   const handleCategoryChange = (newCategory) => {
-    setCategory(newCategory)
     const firstType = PLOT_TYPES[newCategory][0].value
+    setCategory(newCategory)
     setPlotType(firstType)
+    setParams((prev) => deriveParams(newCategory, firstType, prev))
+  }
+
+  const handlePlotTypeChange = (newPlotType) => {
+    setPlotType(newPlotType)
+    setParams((prev) => deriveParams(category, newPlotType, prev))
   }
 
   const toggleHeatmapColumn = (col) => {
@@ -189,7 +235,7 @@ export default function PlotBuilder({ sessionId }) {
             <span className="font-medium text-slate-600">Type de graphique</span>
             <select
               value={plotType}
-              onChange={(e) => setPlotType(e.target.value)}
+              onChange={(e) => handlePlotTypeChange(e.target.value)}
               className="rounded-md border border-slate-300 px-3 py-1.5"
             >
               {PLOT_TYPES[category].map((t) => (
