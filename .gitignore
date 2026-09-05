@@ -11,9 +11,6 @@ venv/
 .ruff_cache/
 *.egg
 
-# uv
-backend/.venv/
-
 # Node / Frontend
 node_modules/
 frontend/dist/
