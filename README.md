@@ -37,6 +37,10 @@ uv run uvicorn app.main:app --reload
 
 L'API est disponible sur http://localhost:8000 (documentation interactive sur `/docs`).
 
+> Si `uv run` ne fonctionne pas dans votre environnement (ex: confinement snap),
+> utilisez directement l'environnement virtuel créé par `uv sync` :
+> `.venv/bin/uvicorn app.main:app --reload`.
+
 ### Frontend
 
 ```bash
@@ -52,6 +56,18 @@ L'application est disponible sur http://localhost:5173 (proxy API configuré ver
 1. **Accueil** : upload d'un fichier CSV via drag & drop
 2. **Détection du séparateur** : confirmation ou correction du séparateur détecté automatiquement
 3. **Dashboard** : aperçu des données (100 premières lignes) et statistiques descriptives par colonne
+
+## Tests manuels effectués (Phase 1)
+
+- Upload d'un CSV séparé par virgules : séparateur `,` détecté correctement
+- Upload d'un CSV séparé par points-virgules : séparateur `;` détecté correctement
+- Upload d'un TSV (tabulations) : séparateur `\t` détecté correctement
+- Parsing avec un mauvais séparateur : erreur `SEPARATOR_LIKELY_WRONG` renvoyée (HTTP 422)
+- Accès à une session inexistante : erreur `SESSION_NOT_FOUND` renvoyée (HTTP 404)
+- Aperçu des données et statistiques (numériques, chaînes, booléens, dates,
+  valeurs manquantes) vérifiés manuellement contre les données sources
+- Flux complet testé de bout en bout à travers le proxy Vite (upload → parse
+  → preview → stats)
 
 ## Roadmap
 
