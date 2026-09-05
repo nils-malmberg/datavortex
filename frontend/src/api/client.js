@@ -71,4 +71,12 @@ export function deleteSession(sessionId) {
   return api.delete(`/session/${sessionId}`)
 }
 
+export function generateReportPdf(sessionId, { sections, plots = [], pageFormat = 'A4', orientation = 'portrait' }) {
+  return api.post(
+    '/report/pdf',
+    { session_id: sessionId, sections, plots, page_format: pageFormat, orientation },
+    { responseType: 'blob' },
+  )
+}
+
 export default api

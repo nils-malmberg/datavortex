@@ -33,6 +33,7 @@ from app.models import (
     CreateColumnRequest,
     ExportCsvRequest,
     ExportPlotRequest,
+    GenerateReportRequest,
     ParseRequest,
     ParseResponse,
     Plot1DRequest,
@@ -51,6 +52,7 @@ from app.parsing import (
     parse_json,
 )
 from app.plotting import build_1d_figure, build_2d_figure, build_3d_figure
+from app.report import build_report
 from app.serialize import dataframe_to_records
 from app.session_store import Session, store
 from app.stats import column_summary, dataframe_summary
@@ -419,5 +421,33 @@ def export_plot(body: ExportPlotRequest) -> Response:
     return Response(
         content=image_bytes,
         media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# --- Rapport PDF (Phase 6) ----------------------------------------------------
+
+@app.post("/api/report/pdf")
+def generate_report_pdf(body: GenerateReportRequest) -> Response:
+    session = _get_parsed_session_or_error(body.session_id)
+
+    try:
+        pdf_bytes = build_report(
+            session,
+            sections=body.sections,
+            plot_specs=body.plots,
+            page_format=body.page_format,
+            orientation=body.orientation,
+        )
+    except AppError:
+        raise
+    except Exception as exc:
+        raise AppError(500, "REPORT_GENERATION_FAILED", f"Échec de la génération du rapport : {exc}")
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%Hh%M")
+    filename = f"rapport_{timestamp}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

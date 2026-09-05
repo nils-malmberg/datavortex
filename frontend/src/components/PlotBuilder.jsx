@@ -3,6 +3,14 @@ import { getPreview, plot1D, plot2D, plot3D } from '../api/client'
 import PlotPreview from './PlotPreview'
 import ExportPlot from './ExportPlot'
 
+function describePlot(params) {
+  const type = params.plot_type
+  if (params.column) return `${type} — ${params.column}`
+  if (params.x && params.y) return `${type} — ${params.y} vs ${params.x}`
+  if (params.x) return `${type} — ${params.x}`
+  return type
+}
+
 const NUMERIC_TYPES = ['integer', 'float']
 const CATEGORICAL_TYPES = ['string', 'boolean']
 
@@ -72,7 +80,7 @@ const DEFAULT_PARAMS = {
 // bloque silencieusement la génération du graphique.
 const REQUIRE_REAL_VALUE = ['column', 'x', 'y', 'z']
 
-export default function PlotBuilder({ sessionId, refreshKey }) {
+export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
   const [columns, setColumns] = useState([])
   const [columnTypes, setColumnTypes] = useState({})
   const [category, setCategory] = useState('2d')
@@ -362,12 +370,30 @@ export default function PlotBuilder({ sessionId, refreshKey }) {
 
       <PlotPreview figure={figure} isLoading={isLoading} error={error} />
 
-      <ExportPlot
-        sessionId={sessionId}
-        kind={category}
-        params={lastSpec?.kind === category ? lastSpec.params : null}
-        disabled={!figure || isLoading}
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <ExportPlot
+          sessionId={sessionId}
+          kind={category}
+          params={lastSpec?.kind === category ? lastSpec.params : null}
+          disabled={!figure || isLoading}
+        />
+        {onAddToReport && (
+          <button
+            onClick={() =>
+              onAddToReport({
+                id: crypto.randomUUID(),
+                kind: lastSpec.kind,
+                params: lastSpec.params,
+                label: describePlot(lastSpec.params),
+              })
+            }
+            disabled={!figure || isLoading}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            + Ajouter au rapport
+          </button>
+        )}
+      </div>
     </div>
   )
 }

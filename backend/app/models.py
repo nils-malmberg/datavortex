@@ -113,3 +113,22 @@ class ExportCsvRequest(BaseModel):
     separator: str = ","
     encoding: str = "utf-8"
     include_filter_comment: bool = True
+
+
+# --- Rapport PDF (Phase 6) ----------------------------------------------------
+
+ReportSection = Literal["summary", "stats", "preview", "plots", "correlations", "metadata"]
+
+
+class ReportPlotSpec(BaseModel):
+    kind: Literal["1d", "2d", "3d"]
+    params: dict
+    title: Optional[str] = None
+
+
+class GenerateReportRequest(BaseModel):
+    session_id: str
+    sections: list[ReportSection] = []
+    plots: list[ReportPlotSpec] = []
+    page_format: Literal["A4", "Letter"] = "A4"
+    orientation: Literal["portrait", "landscape"] = "portrait"
