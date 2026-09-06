@@ -21,3 +21,20 @@ html.dark body {
   background-color: #020617;
   color: #f8fafc;
 }
+
+/* Sur écran tactile (mobile/tablette), les zones cliquables denses (boutons,
+   cases à cocher, en-têtes de colonnes triables) sont agrandies à 44px min
+   (standard mobile) sans changer la densité visuelle sur pointeur précis. */
+@media (pointer: coarse) {
+  button,
+  select,
+  [role='button'],
+  [role='tab'] {
+    min-height: 44px;
+  }
+  input[type='checkbox'],
+  input[type='radio'] {
+    min-width: 20px;
+    min-height: 20px;
+  }
+}

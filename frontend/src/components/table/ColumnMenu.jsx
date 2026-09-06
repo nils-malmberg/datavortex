@@ -1,4 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+
+const MENU_WIDTH = 240
+const MENU_MARGIN = 8
 
 /**
  * Menu contextuel d'une colonne (clic droit sur l'en-tête ou sur une cellule).
@@ -6,6 +9,7 @@ import { useEffect, useRef } from 'react'
  */
 export default function ColumnMenu({ column, position, onClose, onSort, onHide, onFilter, onStats, onCopy }) {
   const ref = useRef(null)
+  const [clamped, setClamped] = useState(position)
 
   useEffect(() => {
     const close = (event) => {
@@ -20,6 +24,15 @@ export default function ColumnMenu({ column, position, onClose, onSort, onHide, 
     }
   }, [onClose])
 
+  // Empêche le menu de déborder de l'écran quand le clic droit a lieu près
+  // d'un bord (colonnes de droite, bas de tableau...).
+  useLayoutEffect(() => {
+    const height = ref.current?.offsetHeight || 220
+    const maxX = window.innerWidth - MENU_WIDTH - MENU_MARGIN
+    const maxY = window.innerHeight - height - MENU_MARGIN
+    setClamped({ x: Math.max(MENU_MARGIN, Math.min(position.x, maxX)), y: Math.max(MENU_MARGIN, Math.min(position.y, maxY)) })
+  }, [position])
+
   const items = [
     { label: 'Trier ↑ (croissant)', action: () => onSort('asc') },
     { label: 'Trier ↓ (décroissant)', action: () => onSort('desc') },
@@ -32,7 +45,7 @@ export default function ColumnMenu({ column, position, onClose, onSort, onHide, 
   return (
     <div
       ref={ref}
-      style={{ top: position.y, left: position.x }}
+      style={{ top: clamped.y, left: clamped.x }}
       className="fixed z-50 w-60 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
     >
       <p className="truncate px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
