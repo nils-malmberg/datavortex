@@ -239,7 +239,7 @@ export default function Dashboard({ parseResult, filename, onReset, onInfoChange
             <kbd className="font-mono text-xs">⌘K</kbd>
           </button>
           <button onClick={() => setIsReportOpen(true)} className={PRIMARY_BUTTON_CLASS}>
-            Export Report
+            Rapport PDF
           </button>
           <button onClick={onReset} className={BUTTON_CLASS}>
             Nouveau fichier
