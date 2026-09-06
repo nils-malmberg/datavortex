@@ -1,8 +1,8 @@
 [project]
 name = "datavortex-backend"
-version = "1.0.2"
+version = "1.0.3"
 description = "DataVortex - Backend FastAPI pour visualisation et analyse de données"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.12"  # tensorflow-cpu/tensorflow-macos==2.15.0 n'ont pas de wheels au-delà de cp311
 dependencies = [
     "fastapi==0.104.1",
     "uvicorn[standard]==0.24.0",

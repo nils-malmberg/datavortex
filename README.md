@@ -1,6 +1,6 @@
 # DataVortex
 
-**v1.0.2 — Production Ready ✅**
+**v1.0.3 — Production Ready ✅**
 
 DataVortex est une plateforme interactive de visualisation et d'analyse de données : importez un fichier CSV/Excel/JSON, explorez-le statistiquement, visualisez-le, filtrez-le et enrichissez-le, entraînez des modèles de machine learning, et exportez tout ça — données, graphiques, modèles ou rapport PDF complet — le tout depuis un navigateur, sans envoyer vos données où que ce soit hors de votre machine.
 
@@ -57,9 +57,11 @@ DataVortex est une plateforme interactive de visualisation et d'analyse de donn�
 
 | Composant | Minimum | Recommandé |
 |---|---|---|
-| Python | 3.10 | 3.11+ |
+| Python | 3.10 ou 3.11 (TensorFlow ne publie pas encore de wheels 3.12+) | 3.11 |
 | RAM | 4 Go | 8 Go+ |
 | Navigateur | Chrome/Edge 90+ | Chrome, Firefox, Safari récents |
+
+`uv` gère lui-même la version de Python : il télécharge automatiquement un interpréteur 3.10/3.11 compatible si le vôtre n'en a pas (aucune installation manuelle de Python requise).
 
 > **DataVortex n'est pas publié sur PyPI** (le nom `datavortex` y est déjà pris par un paquet sans rapport) — l'installation se fait directement depuis ce dépôt Git, pas via `uv tool install datavortex` seul.
 

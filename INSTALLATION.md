@@ -126,7 +126,7 @@ Si votre service informatique bloque aussi `irm ... | iex` (téléchargement + e
 
 ```bash
 datavortex --version
-# datavortex 1.0.2
+# datavortex 1.0.3
 
 datavortex --help
 ```
@@ -157,6 +157,7 @@ Cela retire la commande et son environnement isolé. Vos fichiers de données ne
 |---|---|
 | `datavortex: command not found` après installation | Le dossier des outils uv n'est pas dans le PATH. Lancez `uv tool update-shell` puis rouvrez le terminal. |
 | `No executables are provided by package 'datavortex'` | Vous avez lancé `uv tool install datavortex` sans l'URL Git — cette commande a installé un paquet PyPI sans rapport qui porte le même nom par coïncidence. Désinstallez-le (`uv tool uninstall datavortex`) et réinstallez avec l'URL Git complète ci-dessus. |
+| `No solution found... has no wheels with a matching Python ABI tag (e.g., cp314)` | `uv` a choisi automatiquement une version de Python trop récente (TensorFlow n'a pas encore de wheels au-delà de Python 3.11). Depuis la v1.0.2+ (`requires-python`), `uv` doit éviter ce cas de lui-même ; si ça se reproduit, forcez explicitement une version compatible : `uv tool install ./datavortex-cli --python 3.11`. |
 | Port 8000 déjà utilisé | `datavortex --port 9000` |
 | Le terminal semble figé au lancement | Normal la première fois : le message « Chargement des modules… » indique que pandas/scikit-learn/TensorFlow s'initialisent (quelques secondes). |
 
