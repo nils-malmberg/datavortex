@@ -151,26 +151,43 @@ class MergeRequest(BaseModel):
 
 # --- Machine Learning (Phase 7) -----------------------------------------------
 
+RegressionModelType = Literal[
+    "linear", "polynomial", "ridge", "lasso", "elastic_net",
+    "svr", "gpr", "gradient_boosting", "random_forest",
+]
+
+ClassificationModelType = Literal[
+    "logistic", "decision_tree", "random_forest",
+    "svm", "gradient_boosting", "knn", "naive_bayes", "mlp",
+    "voting", "stacking",
+]
+
+ClusteringModelType = Literal[
+    "kmeans", "dbscan", "hierarchical", "agglomerative", "gmm", "mean_shift",
+]
+
+
 class RegressionRequest(BaseModel):
     session_id: str
     features: list[str]
     target: str
-    model_type: Literal["linear", "polynomial"] = "linear"
+    model_type: RegressionModelType = "linear"
     degree: int = 2
+    params: dict = {}
 
 
 class ClassificationRequest(BaseModel):
     session_id: str
     features: list[str]
     target: str
-    model_type: Literal["logistic", "decision_tree", "random_forest"] = "logistic"
+    model_type: ClassificationModelType = "logistic"
     params: dict = {}
 
 
 class ClusteringRequest(BaseModel):
     session_id: str
     features: list[str]
-    model_type: Literal["kmeans", "dbscan"] = "kmeans"
+    model_type: ClusteringModelType = "kmeans"
     params: dict = {}
     color_by: Optional[str] = None
 
@@ -181,6 +198,45 @@ class PCARequest(BaseModel):
     n_components: Literal[2, 3] = 2
     method: Literal["pca", "tsne", "umap"] = "pca"
     color_by: Optional[str] = None
+
+
+# --- Réseaux de neurones & export de modèles (Phase 8.1) -----------------------
+
+class NeuralLayerSpec(BaseModel):
+    units: int = 16
+    activation: Literal["relu", "tanh", "sigmoid", "linear"] = "relu"
+    dropout: float = 0.0
+
+
+class NeuralNetworkRequest(BaseModel):
+    session_id: str
+    features: list[str]
+    target: str
+    task: Literal["regression", "classification"]
+    layers: list[NeuralLayerSpec] = Field(
+        default_factory=lambda: [NeuralLayerSpec(units=16), NeuralLayerSpec(units=8)],
+    )
+    optimizer: Literal["adam", "sgd", "rmsprop"] = "adam"
+    learning_rate: float = 0.001
+    batch_size: int = 32
+    epochs: int = 50
+    validation_split: float = 0.2
+
+
+class ModelExportRequest(BaseModel):
+    session_id: str
+    model_id: str
+    format: Literal["joblib", "pickle", "json", "onnx", "tflite"] = "joblib"
+
+
+class ModelMetadataRequest(BaseModel):
+    session_id: str
+    model_id: str
+
+
+class TrainingScriptRequest(BaseModel):
+    session_id: str
+    model_id: str
 
 
 # --- Statistiques avancées (Phase 8) ------------------------------------------

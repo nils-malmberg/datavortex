@@ -36,6 +36,9 @@ class Session:
     filtered_df: Optional[pd.DataFrame] = None
     created_at: float = field(default_factory=time.time)
     last_accessed: float = field(default_factory=time.time)
+    # Modèles ML entraînés dans cette session (Phase 8.1), indexés par model_id,
+    # pour permettre leur export a posteriori sans tout ré-entraîner.
+    models: dict = field(default_factory=dict)
 
     def touch(self) -> None:
         self.last_accessed = time.time()

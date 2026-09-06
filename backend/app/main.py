@@ -32,6 +32,9 @@ from app.filtering import evaluate_filter
 from app.formulas import evaluate_formula
 from app.groupby_service import run_groupby
 from app.ml import run_classification, run_clustering, run_dimensionality_reduction, run_regression
+from app.ml_export_service import build_metadata, build_training_notebook, export_model_file
+from app.ml_neural_service import run_neural_network
+from app.ml_registry import get_model, register_model
 from app.models import (
     AdvancedFilterRequest,
     AdvancedPlotRequest,
@@ -48,6 +51,9 @@ from app.models import (
     GroupByRequest,
     HypothesisTestRequest,
     MergeRequest,
+    ModelExportRequest,
+    ModelMetadataRequest,
+    NeuralNetworkRequest,
     ParseRequest,
     ParseResponse,
     PCARequest,
@@ -58,6 +64,7 @@ from app.models import (
     Plot3DRequest,
     RegressionRequest,
     StatsExportRequest,
+    TrainingScriptRequest,
     UploadResponse,
 )
 from app.parsing import (
@@ -554,30 +561,43 @@ def generate_report_pdf(body: GenerateReportRequest) -> Response:
 
 # --- Machine Learning (Phase 7) -----------------------------------------------
 
-def _finalize_ml_result(result: dict) -> dict:
+def _finalize_ml_result(result: dict, session: Session | None = None, task: str | None = None,
+                         model_type: str | None = None) -> dict:
     """Convertit les figures Plotly internes (_fig/_extra_figs) en JSON-safe
-    sous une clé unique `plot_data`, pour une réponse API homogène."""
+    sous une clé unique `plot_data`, pour une réponse API homogène. Si le
+    résultat contient un modèle entraîné (_model/_model_meta), l'enregistre
+    dans la session (Phase 8.1) et ajoute `model_id` à la réponse pour
+    permettre son export a posteriori."""
     fig = result.pop("_fig")
     extra = result.pop("_extra_figs", {})
     plot_data = {"main": json.loads(fig.to_json())}
     for name, extra_fig in extra.items():
         plot_data[name] = json.loads(extra_fig.to_json())
     result["plot_data"] = plot_data
+
+    estimator = result.pop("_model", None)
+    meta = result.pop("_model_meta", None)
+    if estimator is not None and meta is not None and session is not None:
+        result["model_id"] = register_model(
+            session, task=task, model_type=model_type, estimator=estimator, **meta,
+        )
     return result
 
 
 @app.post("/api/ml/regression")
 def ml_regression(body: RegressionRequest) -> dict:
     session = _get_parsed_session_or_error(body.session_id)
-    result = run_regression(session.active_df(), body.features, body.target, body.model_type, body.degree)
-    return _finalize_ml_result(result)
+    result = run_regression(
+        session.active_df(), body.features, body.target, body.model_type, body.degree, body.params,
+    )
+    return _finalize_ml_result(result, session, "regression", body.model_type)
 
 
 @app.post("/api/ml/classification")
 def ml_classification(body: ClassificationRequest) -> dict:
     session = _get_parsed_session_or_error(body.session_id)
     result = run_classification(session.active_df(), body.features, body.target, body.model_type, body.params)
-    return _finalize_ml_result(result)
+    return _finalize_ml_result(result, session, "classification", body.model_type)
 
 
 @app.post("/api/ml/clustering")
@@ -594,6 +614,53 @@ def ml_pca(body: PCARequest) -> dict:
         session.active_df(), body.features, body.n_components, body.method, body.color_by,
     )
     return _finalize_ml_result(result)
+
+
+@app.post("/api/ml/neural_network")
+def ml_neural_network(body: NeuralNetworkRequest) -> dict:
+    session = _get_parsed_session_or_error(body.session_id)
+    result = run_neural_network(
+        session.active_df(), body.features, body.target, body.task,
+        [layer.model_dump() for layer in body.layers],
+        body.optimizer, body.learning_rate, body.batch_size, body.epochs, body.validation_split,
+    )
+    return _finalize_ml_result(result, session, "neural_network", "mlp")
+
+
+@app.post("/api/ml/export/model")
+def ml_export_model(body: ModelExportRequest) -> Response:
+    session = _get_parsed_session_or_error(body.session_id)
+    model = get_model(session, body.model_id)
+    content, filename, media_type, checksum = export_model_file(model, body.format)
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Model-Checksum-Md5": checksum,
+        },
+    )
+
+
+@app.post("/api/ml/export/metadata")
+def ml_export_metadata(body: ModelMetadataRequest) -> dict:
+    session = _get_parsed_session_or_error(body.session_id)
+    model = get_model(session, body.model_id)
+    return build_metadata(model)
+
+
+@app.post("/api/ml/export/training_script")
+def ml_export_training_script(body: TrainingScriptRequest) -> Response:
+    session = _get_parsed_session_or_error(body.session_id)
+    model = get_model(session, body.model_id)
+    content = build_training_notebook(model)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%Hh%M")
+    filename = f"reproduction_{model.model_type}_{timestamp}.ipynb"
+    return Response(
+        content=content,
+        media_type="application/x-ipynb+json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # --- Statistiques avancées (Phase 8) ------------------------------------------
