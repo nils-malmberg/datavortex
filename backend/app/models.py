@@ -177,3 +177,16 @@ class PCARequest(BaseModel):
     n_components: Literal[2, 3] = 2
     method: Literal["pca", "tsne", "umap"] = "pca"
     color_by: Optional[str] = None
+
+
+# --- Statistiques avancées (Phase 8) ------------------------------------------
+
+CorrelationMethod = Literal["pearson", "spearman", "kendall"]
+TableFormat = Literal["csv", "excel", "latex"]
+
+
+class StatsExportRequest(BaseModel):
+    session_id: str
+    table: Literal["summary", "correlations", "distributions", "missing"] = "summary"
+    format: TableFormat = "csv"
+    precision: int = 4

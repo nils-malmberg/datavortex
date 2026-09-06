@@ -1,113 +1,73 @@
 import { useEffect, useState } from 'react'
-import { getStats } from '../api/client'
+import { exportStatsTable, getAdvancedStats, getStats } from '../api/client'
+import { extractFilename, triggerBlobDownload } from '../api/download'
+import StatsSummaryTab from './stats/StatsSummaryTab'
+import StatsCorrelationsTab from './stats/StatsCorrelationsTab'
+import StatsDistributionsTab from './stats/StatsDistributionsTab'
+import StatsMissingTab from './stats/StatsMissingTab'
+import {
+  BUTTON_CLASS,
+  Badge,
+  ErrorBox,
+  Loading,
+  Segmented,
+  SliderField,
+  Toggle,
+} from './ui/common'
 
-function formatNumber(value) {
-  if (value === null || value === undefined) return '—'
-  if (typeof value !== 'number') return String(value)
-  return Number.isInteger(value) ? value.toString() : value.toFixed(2)
-}
+/**
+ * Panneau de statistiques (refonte Phase 8).
+ *
+ * Quatre analyses complémentaires (résumé, corrélations, distributions,
+ * valeurs manquantes) partagent une barre d'outils commune : mode avancé,
+ * précision d'affichage, filtre de colonnes et export tabulaire.
+ */
+const TABS = [
+  { value: 'summary', label: 'Résumé' },
+  { value: 'correlations', label: 'Corrélations' },
+  { value: 'distributions', label: 'Distributions' },
+  { value: 'missing', label: 'Valeurs manquantes' },
+]
 
-const TYPE_BADGE_COLORS = {
-  integer: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  float: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  boolean: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
-  datetime: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  string: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300',
-}
+const COLUMN_FILTERS = [
+  { value: 'all', label: 'Toutes' },
+  { value: 'numeric', label: 'Numériques' },
+  { value: 'categorical', label: 'Catégorielles' },
+]
 
-function NumericStats({ stats }) {
-  const rows = [
-    ['Count', stats.count],
-    ['Mean', formatNumber(stats.mean)],
-    ['Median', formatNumber(stats.median)],
-    ['Std dev', formatNumber(stats.std)],
-    ['Min', formatNumber(stats.min)],
-    ['Q1', formatNumber(stats.q1)],
-    ['Q3', formatNumber(stats.q3)],
-    ['Max', formatNumber(stats.max)],
-  ]
-  return <StatRows rows={rows} />
-}
-
-function StringStats({ stats }) {
-  const rows = [
-    ['Count', stats.count],
-    ['Unique', stats.unique],
-    ['Mode', stats.mode ?? '—'],
-  ]
-  return <StatRows rows={rows} />
-}
-
-function BooleanStats({ stats }) {
-  const rows = [
-    ['True', stats.true_count],
-    ['False', stats.false_count],
-    ['% True', `${stats.pct_true}%`],
-  ]
-  return <StatRows rows={rows} />
-}
-
-function StatRows({ rows }) {
-  return (
-    <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
-      {rows.map(([label, value]) => (
-        <div key={label} className="contents">
-          <dt className="text-slate-500 dark:text-slate-400">{label}</dt>
-          <dd className="text-right font-medium text-slate-800 dark:text-slate-100">{value}</dd>
-        </div>
-      ))}
-    </dl>
-  )
-}
-
-function ColumnCard({ name, summary }) {
-  const { type, missing_count: missingCount, missing_pct: missingPct, stats } = summary
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex items-center justify-between">
-        <h4 className="truncate font-semibold text-slate-800 dark:text-slate-100" title={name}>
-          {name}
-        </h4>
-        <span
-          className={`rounded px-2 py-0.5 text-xs font-medium ${
-            TYPE_BADGE_COLORS[type] || 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-          }`}
-        >
-          {type}
-        </span>
-      </div>
-
-      {(type === 'integer' || type === 'float') && <NumericStats stats={stats} />}
-      {type === 'boolean' && <BooleanStats stats={stats} />}
-      {(type === 'string' || type === 'datetime') && <StringStats stats={stats} />}
-
-      {missingCount > 0 && (
-        <p className="text-xs text-orange-600 dark:text-orange-400">
-          {missingCount} valeur(s) manquante(s) ({missingPct}%)
-        </p>
-      )}
-    </div>
-  )
-}
+const EXPORT_FORMATS = [
+  { value: 'csv', label: 'CSV' },
+  { value: 'excel', label: 'Excel' },
+  { value: 'latex', label: 'LaTeX' },
+]
 
 export default function StatsPanel({ sessionId, refreshKey }) {
-  const [summary, setSummary] = useState(null)
-  const [error, setError] = useState(null)
+  const [tab, setTab] = useState('summary')
+  const [advanced, setAdvanced] = useState(false)
+  const [precision, setPrecision] = useState(3)
+  const [columnFilter, setColumnFilter] = useState('all')
+  const [correlationMethod, setCorrelationMethod] = useState('pearson')
+
+  const [basicStats, setBasicStats] = useState(null)
+  const [advancedStats, setAdvancedStats] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [exportError, setExportError] = useState(null)
+  const [isExporting, setIsExporting] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    getStats(sessionId)
-      .then(({ data }) => {
-        if (!cancelled) setSummary(data)
+    setError(null)
+    Promise.all([getStats(sessionId), getAdvancedStats(sessionId, correlationMethod)])
+      .then(([basic, adv]) => {
+        if (cancelled) return
+        setBasicStats(basic.data)
+        setAdvancedStats(adv.data)
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(
-            err?.response?.data?.error?.message ||
-              'Impossible de charger les statistiques.',
-          )
+          setError(err?.response?.data?.error?.message || 'Impossible de charger les statistiques.')
         }
       })
       .finally(() => {
@@ -116,38 +76,106 @@ export default function StatsPanel({ sessionId, refreshKey }) {
     return () => {
       cancelled = true
     }
-  }, [sessionId, refreshKey])
+  }, [sessionId, refreshKey, correlationMethod])
 
-  if (loading) {
-    return <p className="p-4 text-sm text-slate-500 dark:text-slate-400">Calcul des statistiques…</p>
+  const handleExport = async (format) => {
+    setExportError(null)
+    setIsExporting(true)
+    try {
+      const response = await exportStatsTable(sessionId, { table: tab, format, precision })
+      const filename = extractFilename(response.headers['content-disposition'], `stats_${tab}.${format}`)
+      triggerBlobDownload(response.data, filename)
+    } catch (err) {
+      // La réponse d'erreur arrive en blob (responseType), il faut la relire.
+      let message = "Échec de l'export."
+      try {
+        const parsed = JSON.parse(await err.response.data.text())
+        message = parsed?.error?.message || message
+      } catch {
+        message = err?.message || message
+      }
+      setExportError(message)
+    } finally {
+      setIsExporting(false)
+    }
   }
-  if (error) {
-    return <p className="rounded-md bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>
-  }
-  if (!summary) return null
 
-  const { columns, n_rows: nRows, n_columns: nColumns, memory_usage_bytes: memoryBytes, filtered } = summary
+  if (loading) return <Loading>Calcul des statistiques avancées…</Loading>
+  if (error) return <ErrorBox>{error}</ErrorBox>
+  if (!advancedStats || !basicStats) return null
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-baseline justify-between">
-        <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-50">
-          Statistiques par colonne
-          {filtered && (
-            <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-              filtré
-            </span>
-          )}
-        </h3>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Segmented options={TABS} value={tab} onChange={setTab} ariaLabel="Type d'analyse statistique" />
+          {advancedStats.filtered && <Badge tone="blue">données filtrées</Badge>}
+        </div>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          {nRows} lignes × {nColumns} colonnes — {(memoryBytes / 1024).toFixed(1)} KB en mémoire
+          {advancedStats.n_rows} lignes × {advancedStats.n_columns} colonnes
         </p>
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {Object.entries(columns).map(([name, colSummary]) => (
-          <ColumnCard key={name} name={name} summary={colSummary} />
-        ))}
+
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/60">
+        <Toggle
+          label="Mode avancé"
+          checked={advanced}
+          onChange={setAdvanced}
+          hint="Affiche les indicateurs destinés aux experts : erreur standard, CV, MAD, intervalles de confiance, bornes d'outliers."
+        />
+        <SliderField
+          label="Précision"
+          value={precision}
+          onChange={setPrecision}
+          min={1}
+          max={6}
+          format={(v) => `${v} déc.`}
+          hint="Nombre de décimales affichées et utilisées lors de l'export."
+        />
+        {tab === 'summary' && (
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-slate-600 dark:text-slate-300">Colonnes</span>
+            <Segmented options={COLUMN_FILTERS} value={columnFilter} onChange={setColumnFilter} size="sm" />
+          </label>
+        )}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Exporter :</span>
+          {EXPORT_FORMATS.map((fmt) => (
+            <button
+              key={fmt.value}
+              onClick={() => handleExport(fmt.value)}
+              disabled={isExporting}
+              className={BUTTON_CLASS}
+            >
+              {fmt.label}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {exportError && <ErrorBox>{exportError}</ErrorBox>}
+
+      {tab === 'summary' && (
+        <StatsSummaryTab
+          advancedStats={advancedStats}
+          basicStats={basicStats}
+          columnFilter={columnFilter}
+          advanced={advanced}
+          precision={precision}
+        />
+      )}
+      {tab === 'correlations' && (
+        <StatsCorrelationsTab
+          correlations={advancedStats.correlations}
+          precision={precision}
+          method={correlationMethod}
+          onChangeMethod={setCorrelationMethod}
+        />
+      )}
+      {tab === 'distributions' && (
+        <StatsDistributionsTab distributions={advancedStats.distributions} precision={precision} />
+      )}
+      {tab === 'missing' && <StatsMissingTab missing={advancedStats.missing} precision={precision} />}
     </div>
   )
 }

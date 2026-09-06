@@ -45,6 +45,7 @@ from app.models import (
     Plot2DRequest,
     Plot3DRequest,
     RegressionRequest,
+    StatsExportRequest,
     UploadResponse,
 )
 from app.parsing import (
@@ -62,6 +63,7 @@ from app.report import build_report
 from app.serialize import dataframe_to_records
 from app.session_store import Session, store
 from app.stats import column_summary, dataframe_summary
+from app.stats_service import advanced_stats, stats_export_table
 
 MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024  # 100MB
 PREVIEW_ROWS = 100
@@ -574,3 +576,59 @@ def ml_pca(body: PCARequest) -> dict:
         session.active_df(), body.features, body.n_components, body.method, body.color_by,
     )
     return _finalize_ml_result(result)
+
+
+# --- Statistiques avancées (Phase 8) ------------------------------------------
+
+TABLE_MEDIA_TYPES = {
+    "csv": "text/csv",
+    "excel": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "latex": "application/x-latex",
+}
+TABLE_EXTENSIONS = {"csv": "csv", "excel": "xlsx", "latex": "tex"}
+
+
+def _table_response(table: pd.DataFrame, fmt: str, precision: int, basename: str) -> Response:
+    """Sérialise un DataFrame en pièce jointe CSV, Excel ou LaTeX."""
+    precision = max(0, min(10, precision))
+    rounded = table.copy()
+    numeric_cols = rounded.select_dtypes(include="number").columns
+    rounded[numeric_cols] = rounded[numeric_cols].round(precision)
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%Hh%M")
+    filename = f"{basename}_{timestamp}.{TABLE_EXTENSIONS[fmt]}"
+
+    if fmt == "csv":
+        content = rounded.to_csv(index=False).encode("utf-8-sig")
+    elif fmt == "excel":
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            rounded.to_excel(writer, index=False, sheet_name=basename[:31] or "Export")
+        content = buffer.getvalue()
+    else:
+        latex = rounded.to_latex(index=False, escape=True, float_format=f"%.{precision}f")
+        content = latex.encode("utf-8")
+
+    return Response(
+        content=content,
+        media_type=TABLE_MEDIA_TYPES[fmt],
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/stats/{session_id}/advanced")
+def get_advanced_stats(session_id: str, method: str = "pearson") -> dict:
+    """Corrélations (r + p-values), distributions, normalité et données manquantes."""
+    session = _get_parsed_session_or_error(session_id)
+    result = advanced_stats(session.active_df(), correlation_method=method)
+    result["session_id"] = session_id
+    result["filename"] = session.filename
+    result["filtered"] = session.filtered_df is not None
+    return result
+
+
+@app.post("/api/stats/export")
+def export_stats_table(body: StatsExportRequest) -> Response:
+    session = _get_parsed_session_or_error(body.session_id)
+    table = stats_export_table(session.active_df(), body.table)
+    return _table_response(table, body.format, body.precision, f"stats_{body.table}")

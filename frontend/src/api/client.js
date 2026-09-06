@@ -125,3 +125,13 @@ export function runPCA(sessionId, { features, nComponents = 2, method = 'pca', c
 
 
 export default api
+
+// --- Statistiques avancées (Phase 8) -----------------------------------------
+
+export function getAdvancedStats(sessionId, method = 'pearson') {
+  return api.get(`/stats/${sessionId}/advanced`, { params: { method } })
+}
+
+export function exportStatsTable(sessionId, { table, format, precision = 4 }) {
+  return api.post('/stats/export', { session_id: sessionId, table, format, precision }, { responseType: 'blob' })
+}
