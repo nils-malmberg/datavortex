@@ -13,6 +13,7 @@ export default function TabWorkspace({
   onReset,
   mergeableTabs,
   onOpenMergeDialog,
+  onInfoChange,
 }) {
   if (tab.step === 'upload') {
     return (
@@ -37,6 +38,7 @@ export default function TabWorkspace({
         parseResult={tab.parseResult}
         filename={tab.filename}
         onReset={onReset}
+        onInfoChange={onInfoChange}
       />
     )
   }

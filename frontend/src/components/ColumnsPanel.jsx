@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { columnOperation, listColumns, transformColumn } from '../api/client'
 import ColumnCreator from './ColumnCreator'
 import ColumnTransformPanel from './columns/ColumnTransformPanel'
+import useToast from './ui/ToastProvider'
 import {
   BUTTON_CLASS,
   Badge,
@@ -53,7 +54,7 @@ export default function ColumnsPanel({ sessionId, onColumnsChanged }) {
   const [state, setState] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [notice, setNotice] = useState(null)
+  const toast = useToast()
 
   const [selected, setSelected] = useState([])
   const [renaming, setRenaming] = useState(null)
@@ -80,11 +81,6 @@ export default function ColumnsPanel({ sessionId, onColumnsChanged }) {
     refresh()
   }, [refresh])
 
-  const flash = (message) => {
-    setNotice(message)
-    setTimeout(() => setNotice(null), 3000)
-  }
-
   // Mémoïsé pour que le filtrage ci-dessous ne se recalcule pas à chaque rendu.
   const items = useMemo(() => state?.items || [], [state])
   const visibleItems = useMemo(
@@ -101,7 +97,11 @@ export default function ColumnsPanel({ sessionId, onColumnsChanged }) {
       await refresh()
       onColumnsChanged?.()
       setSelected([])
-      flash(data.filter_dropped ? `${successMessage} Le filtre actif portait sur une colonne modifiée : il a été levé.` : successMessage)
+      if (data.filter_dropped) {
+        toast.warning(`${successMessage} Le filtre actif portait sur une colonne modifiée : il a été levé.`)
+      } else {
+        toast.success(successMessage)
+      }
     } catch (err) {
       setError(err?.response?.data?.error?.message || "L'opération a échoué.")
     }
@@ -153,11 +153,6 @@ export default function ColumnsPanel({ sessionId, onColumnsChanged }) {
       </div>
 
       {error && <ErrorBox>{error}</ErrorBox>}
-      {notice && (
-        <p className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-          {notice}
-        </p>
-      )}
 
       {tab === 'manage' && (
         <Panel className="flex flex-col gap-3">

@@ -5,6 +5,7 @@ import ExportPlot from './ExportPlot'
 import PlotSidebar from './plot/PlotSidebar'
 import PlotStylePanel from './plot/PlotStylePanel'
 import PlotGallery from './plot/PlotGallery'
+import useToast from './ui/ToastProvider'
 import { BUTTON_CLASS, Badge, ErrorBox, Loading, PRIMARY_BUTTON_CLASS } from './ui/common'
 import {
   DEFAULT_SPEC,
@@ -58,7 +59,7 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
   const [lastPayload, setLastPayload] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [notice, setNotice] = useState(null)
+  const toast = useToast()
 
   const [panelCollapsed, setPanelCollapsed] = useState(false)
   const [showManagement, setShowManagement] = useState(false)
@@ -158,17 +159,12 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(spec), sessionId, refreshKey, columns.length])
 
-  const flash = (message) => {
-    setNotice(message)
-    setTimeout(() => setNotice(null), 2500)
-  }
-
   // --- Presets --------------------------------------------------------------
   const handleSavePreset = (name) => {
     const next = [...presets, { id: crypto.randomUUID(), name, spec, createdAt: Date.now() }]
     setPresets(next)
     savePresets(next)
-    flash(`Preset « ${name} » enregistré.`)
+    toast.success(`Preset « ${name} » enregistré.`)
   }
 
   const handleLoadPreset = (preset) => {
@@ -177,9 +173,9 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
       .filter((value) => value && !columns.includes(value))
     setSpec({ ...DEFAULT_SPEC, ...preset.spec })
     if (missing.length > 0) {
-      flash(`Preset chargé, mais ces colonnes sont absentes du fichier : ${[...new Set(missing)].join(', ')}.`)
+      toast.warning(`Preset chargé, mais ces colonnes sont absentes du fichier : ${[...new Set(missing)].join(', ')}.`)
     } else {
-      flash(`Preset « ${preset.name} » chargé.`)
+      toast.success(`Preset « ${preset.name} » chargé.`)
     }
   }
 
@@ -197,9 +193,9 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
         ...prev,
         { id: crypto.randomUUID(), label: describeSpec(spec), thumbnail, spec },
       ])
-      flash('Graphique ajouté à la galerie.')
+      toast.success('Graphique ajouté à la galerie.')
     } catch {
-      flash('Impossible de capturer ce graphique.')
+      toast.error('Impossible de capturer ce graphique.')
     }
   }
 
@@ -208,9 +204,9 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
     const text = JSON.stringify({ datavortex_plot: spec }, null, 2)
     try {
       await navigator.clipboard.writeText(text)
-      flash('Configuration copiée dans le presse-papier — collez-la pour la réutiliser.')
+      toast.success('Configuration copiée dans le presse-papier — collez-la pour la réutiliser.')
     } catch {
-      flash("Le presse-papier n'est pas accessible dans ce contexte.")
+      toast.error("Le presse-papier n'est pas accessible dans ce contexte.")
     }
   }
 
@@ -219,13 +215,13 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
       const text = await navigator.clipboard.readText()
       const parsed = JSON.parse(text)
       if (!parsed?.datavortex_plot) {
-        flash('Le presse-papier ne contient pas une configuration DataVortex.')
+        toast.warning('Le presse-papier ne contient pas une configuration DataVortex.')
         return
       }
       setSpec({ ...DEFAULT_SPEC, ...parsed.datavortex_plot })
-      flash('Configuration importée.')
+      toast.success('Configuration importée.')
     } catch {
-      flash('Impossible de lire une configuration valide depuis le presse-papier.')
+      toast.error('Impossible de lire une configuration valide depuis le presse-papier.')
     }
   }
 
@@ -337,11 +333,6 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
             </span>
           </div>
 
-          {notice && (
-            <p className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-              {notice}
-            </p>
-          )}
         </div>
 
         <PlotStylePanel

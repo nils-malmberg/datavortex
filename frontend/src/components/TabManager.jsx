@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { deleteSession, getPreview } from '../api/client'
 import TabWorkspace from './TabWorkspace'
 import MergeDialog from './MergeDialog'
+import StatusBar from './ui/StatusBar'
+import ShortcutsHelp from './ui/ShortcutsHelp'
 
 const STORAGE_KEY = 'datavortex_tabs'
 
@@ -44,6 +46,9 @@ export default function TabManager() {
   const [activeTabId, setActiveTabId] = useState(null)
   const [isRestoring, setIsRestoring] = useState(true)
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false)
+  // Informations affichées en barre d'état, remontées par l'onglet actif.
+  const [statusInfo, setStatusInfo] = useState(null)
+  const [isHelpOpen, setIsHelpOpen] = useState(false)
 
   // Restaure les onglets sauvegardés au montage, en validant que chaque
   // session existe toujours côté backend (elle a pu expirer après 1h, ou le
@@ -134,6 +139,7 @@ export default function TabManager() {
       return
     }
 
+    setStatusInfo(null)
     setTabs(remaining)
     if (activeTabId === clientId) {
       const fallback = remaining[closedIndex] || remaining[closedIndex - 1] || remaining[0]
@@ -200,7 +206,7 @@ export default function TabManager() {
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex min-w-0 flex-col">
       <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-900">
         {tabs.map((tab, i) => (
           <div
@@ -243,6 +249,7 @@ export default function TabManager() {
           onReset={() => handleResetTab(activeTab.clientId)}
           mergeableTabs={mergeableTabs}
           onOpenMergeDialog={() => setIsMergeDialogOpen(true)}
+          onInfoChange={setStatusInfo}
         />
       )}
 
@@ -253,6 +260,13 @@ export default function TabManager() {
           onCreated={handleMergeCreated}
         />
       )}
+
+      <StatusBar
+        info={activeTab?.step === 'dashboard' ? statusInfo : null}
+        openTabs={tabs.length}
+        onShowShortcuts={() => setIsHelpOpen(true)}
+      />
+      <ShortcutsHelp open={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
   )
 }

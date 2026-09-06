@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { applyAdvancedFilter, getPreview } from '../api/client'
 import FilterNodeView from './filter/FilterNode'
+import useToast from './ui/ToastProvider'
 import {
   BUTTON_CLASS,
   Badge,
@@ -72,7 +73,7 @@ export default function FilterBuilder({ sessionId, onFilterApplied }) {
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [notice, setNotice] = useState(null)
+  const toast = useToast()
 
   const [presets, setPresets] = useState(readPresets)
   const [presetName, setPresetName] = useState('')
@@ -146,11 +147,6 @@ export default function FilterBuilder({ sessionId, onFilterApplied }) {
     return map
   }, [result])
 
-  const flash = (message) => {
-    setNotice(message)
-    setTimeout(() => setNotice(null), 2500)
-  }
-
   const addCondition = () => {
     if (columns.length === 0) return
     setRoot((prev) =>
@@ -179,7 +175,7 @@ export default function FilterBuilder({ sessionId, onFilterApplied }) {
     setPresets(next)
     writePresets(next)
     setPresetName('')
-    flash(`Filtre « ${presetName.trim()} » enregistré.`)
+    toast.success(`Filtre « ${presetName.trim()} » enregistré.`)
   }
 
   const loadPreset = (preset) => {
@@ -195,11 +191,11 @@ export default function FilterBuilder({ sessionId, onFilterApplied }) {
     check(preset.root)
     setRoot(reassignIds(preset.root))
     setInvert(Boolean(preset.invert))
-    flash(
-      missing.length > 0
-        ? `Filtre chargé, mais ces colonnes sont absentes : ${[...new Set(missing)].join(', ')}.`
-        : `Filtre « ${preset.name} » chargé.`,
-    )
+    if (missing.length > 0) {
+      toast.warning(`Filtre chargé, mais ces colonnes sont absentes : ${[...new Set(missing)].join(', ')}.`)
+    } else {
+      toast.success(`Filtre « ${preset.name} » chargé.`)
+    }
   }
 
   const deletePreset = (id) => {
@@ -253,11 +249,6 @@ export default function FilterBuilder({ sessionId, onFilterApplied }) {
       </div>
 
       {error && <ErrorBox>{error}</ErrorBox>}
-      {notice && (
-        <p className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-          {notice}
-        </p>
-      )}
 
       {/* Conditions */}
       {root ? (
