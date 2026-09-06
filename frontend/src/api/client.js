@@ -71,10 +71,20 @@ export function deleteSession(sessionId) {
   return api.delete(`/session/${sessionId}`)
 }
 
-export function generateReportPdf(sessionId, { sections, plots = [], pageFormat = 'A4', orientation = 'portrait' }) {
+export function generateReportPdf(
+  sessionId,
+  { sections, plots = [], pageFormat = 'A4', orientation = 'portrait', resizePlotsToFit = true },
+) {
   return api.post(
     '/report/pdf',
-    { session_id: sessionId, sections, plots, page_format: pageFormat, orientation },
+    {
+      session_id: sessionId,
+      sections,
+      plots,
+      page_format: pageFormat,
+      orientation,
+      resize_plots_to_fit: resizePlotsToFit,
+    },
     { responseType: 'blob' },
   )
 }

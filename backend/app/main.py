@@ -502,6 +502,7 @@ def generate_report_pdf(body: GenerateReportRequest) -> Response:
             plot_specs=body.plots,
             page_format=body.page_format,
             orientation=body.orientation,
+            resize_plots_to_fit=body.resize_plots_to_fit,
         )
     except AppError:
         raise

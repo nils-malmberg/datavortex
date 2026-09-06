@@ -132,6 +132,7 @@ class GenerateReportRequest(BaseModel):
     plots: list[ReportPlotSpec] = []
     page_format: Literal["A4", "Letter"] = "A4"
     orientation: Literal["portrait", "landscape"] = "portrait"
+    resize_plots_to_fit: bool = True
 
 
 # --- Fusion multi-fichiers (Phase 5 update) -----------------------------------

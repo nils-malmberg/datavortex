@@ -2,10 +2,15 @@
 
 Le rapport combine toujours une page de couverture, puis les sections
 sélectionnées par l'utilisateur (résumé exécutif, statistiques, aperçu des
-données, graphiques, corrélations, métadonnées). Les graphiques sont
-regénérés côté serveur à partir de leur spécification (même mécanisme que
-POST /api/plot/*) puis rendus en image PNG via kaleido pour être intégrés au
-PDF.
+données, graphiques, corrélations, métadonnées). Les graphiques (et la
+heatmap de corrélation) sont regénérés côté serveur à partir de leur
+spécification (même mécanisme que POST /api/plot/*) puis rendus en image PNG
+via kaleido pour être intégrés au PDF — cela garantit qu'ils sont toujours
+mis à l'échelle pour tenir dans les marges de page, quel que soit le nombre
+de colonnes numériques. Les tableaux (stats, aperçu, métadonnées) ont des
+largeurs de colonnes explicites calées sur la largeur de contenu de la page
+et enveloppent leur texte dans des Paragraph, pour ne jamais dépasser les
+marges même avec des valeurs longues.
 """
 from __future__ import annotations
 
@@ -34,6 +39,11 @@ _PLOT_BUILDERS = {
     "3d": (Plot3DRequest, build_3d_figure),
 }
 
+# Sections qui démarrent toujours sur une nouvelle page (contenu volumineux :
+# tableaux ou images qui méritent leur propre page plutôt que de s'enchaîner).
+_BIG_SECTIONS = {"preview", "stats", "correlations", "plots"}
+_SECTION_ORDER = ["summary", "metadata", "preview", "stats", "correlations", "plots"]
+
 _BRAND = colors.HexColor("#2563eb")
 _MUTED = colors.HexColor("#64748b")
 _BORDER = colors.HexColor("#e2e8f0")
@@ -55,7 +65,17 @@ def _styles():
     styles.add(ParagraphStyle(name="SectionHeading", fontSize=16, leading=20, textColor=_BRAND, spaceBefore=6, spaceAfter=10))
     styles.add(ParagraphStyle(name="Body", fontSize=10, leading=14, textColor=colors.HexColor("#334155")))
     styles.add(ParagraphStyle(name="PlotCaption", fontSize=9, leading=12, textColor=_MUTED, spaceBefore=4, spaceAfter=16))
+    styles.add(ParagraphStyle(name="CellText", fontSize=8, leading=10, textColor=colors.HexColor("#334155"), wordWrap="CJK"))
+    styles.add(ParagraphStyle(name="CellHeader", fontSize=8, leading=10, textColor=colors.HexColor("#0f172a"), fontName="Helvetica-Bold"))
     return styles
+
+
+def _cell(text, style) -> Paragraph:
+    """Enveloppe une valeur de cellule dans un Paragraph pour qu'elle puisse
+    passer à la ligne au lieu de forcer le tableau à dépasser sa largeur."""
+    safe = "" if text is None else str(text)
+    safe = safe.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return Paragraph(safe, style)
 
 
 def _header_footer(session):
@@ -90,7 +110,7 @@ def _cover_flowables(session, df, styles):
     ]
 
 
-def _summary_flowables(session, df, styles):
+def _summary_flowables(session, df, styles, content_width):
     types = detect_column_types(df)
     type_counts: dict[str, int] = {}
     for t in types.values():
@@ -106,12 +126,12 @@ def _summary_flowables(session, df, styles):
         ["Taille en mémoire", f"{summary['memory_usage_bytes'] / 1024:.1f} KB"],
         ["Session filtrée", "Oui" if session.filtered_df is not None else "Non"],
     ]
-    story.append(_kv_table(rows))
+    story.append(_kv_table(rows, styles, content_width))
     story.append(Spacer(1, 0.6 * cm))
     return story
 
 
-def _metadata_flowables(session, styles):
+def _metadata_flowables(session, styles, content_width):
     story = [Paragraph("Métadonnées", styles["SectionHeading"])]
     rows = [
         ["Nom du fichier", session.filename],
@@ -122,7 +142,7 @@ def _metadata_flowables(session, styles):
     if session.filtered_df is not None and session.active_filter is not None:
         rows.append(["Filtre appliqué", _describe_filter(session.active_filter)])
         rows.append(["Lignes après filtre", f"{session.filtered_df.shape[0]} / {session.df.shape[0]}"])
-    story.append(_kv_table(rows))
+    story.append(_kv_table(rows, styles, content_width))
     story.append(Spacer(1, 0.6 * cm))
     return story
 
@@ -136,14 +156,14 @@ def _describe_filter(node) -> str:
     return f" {node.logic} ".join(f"({p})" for p in parts)
 
 
-def _kv_table(rows: list[list[str]]) -> Table:
-    table = Table(rows, colWidths=[4.5 * cm, None])
+def _kv_table(rows: list[list[str]], styles, content_width: float) -> Table:
+    label_width = 4.5 * cm
+    value_width = max(content_width - label_width, 3 * cm)
+    body = [[_cell(label, styles["CellHeader"]), _cell(value, styles["CellText"])] for label, value in rows]
+    table = Table(body, colWidths=[label_width, value_width])
     table.setStyle(
         TableStyle(
             [
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 9.5),
-                ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#334155")),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
                 ("TOPPADDING", (0, 0), (-1, -1), 4),
                 ("LINEBELOW", (0, 0), (-1, -1), 0.5, _BORDER),
@@ -167,28 +187,30 @@ def _format_stat_summary(col_type: str, stats: dict) -> str:
     return f"{unique} valeurs uniques, mode : {mode}" if mode is not None else f"{unique} valeurs uniques"
 
 
-def _stats_flowables(df, styles):
+def _stats_flowables(df, styles, content_width):
     story = [Paragraph("Statistiques par colonne", styles["SectionHeading"])]
-    header = ["Colonne", "Type", "Count", "Manquants", "Résumé"]
+    fixed = [3.2 * cm, 2 * cm, 1.8 * cm, 2.2 * cm]
+    summary_width = max(content_width - sum(fixed), 3 * cm)
+    col_widths = fixed + [summary_width]
+
+    header = [_cell(h, styles["CellHeader"]) for h in ["Colonne", "Type", "Count", "Manquants", "Résumé"]]
     rows = [header]
     for col in df.columns:
         summary = column_summary(df[col])
         rows.append(
             [
-                col,
-                summary["type"],
-                str(summary["stats"].get("count", "—")),
-                f"{summary['missing_pct']}%",
-                _format_stat_summary(summary["type"], summary["stats"]),
+                _cell(col, styles["CellText"]),
+                _cell(summary["type"], styles["CellText"]),
+                _cell(summary["stats"].get("count", "—"), styles["CellText"]),
+                _cell(f"{summary['missing_pct']}%", styles["CellText"]),
+                _cell(_format_stat_summary(summary["type"], summary["stats"]), styles["CellText"]),
             ]
         )
-    table = Table(rows, colWidths=[3.2 * cm, 2 * cm, 1.8 * cm, 2.2 * cm, None], repeatRows=1)
+    table = Table(rows, colWidths=col_widths, repeatRows=1)
     table.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8.5),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
                 ("TOPPADDING", (0, 0), (-1, -1), 4),
                 ("GRID", (0, 0), (-1, -1), 0.5, _BORDER),
@@ -201,23 +223,24 @@ def _stats_flowables(df, styles):
     return story
 
 
-def _preview_flowables(df, styles, max_rows: int = 15, max_cols: int = 8):
+def _preview_flowables(df, styles, content_width, max_rows: int = 15, max_cols: int = 8):
     story = [Paragraph("Aperçu des données", styles["SectionHeading"])]
     columns = list(df.columns[:max_cols])
     note = ""
     if len(df.columns) > max_cols:
         note = f" (colonnes limitées à {max_cols} sur {len(df.columns)})"
-    header = columns
+
+    col_width = max(content_width / len(columns), 1.5 * cm)
+    header = [_cell(c, styles["CellHeader"]) for c in columns]
     rows = [header]
     for _, row in df[columns].head(max_rows).iterrows():
-        rows.append([("" if pd.isna(v) else str(v)) for v in row.tolist()])
-    table = Table(rows, repeatRows=1)
+        rows.append([_cell("" if pd.isna(v) else v, styles["CellText"]) for v in row.tolist()])
+
+    table = Table(rows, colWidths=[col_width] * len(columns), repeatRows=1)
     table.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 7.5),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
                 ("TOPPADDING", (0, 0), (-1, -1), 3),
                 ("GRID", (0, 0), (-1, -1), 0.4, _BORDER),
@@ -231,15 +254,7 @@ def _preview_flowables(df, styles, max_rows: int = 15, max_cols: int = 8):
     return story
 
 
-def _correlation_color(value: float) -> colors.Color:
-    value = max(-1.0, min(1.0, value))
-    if value >= 0:
-        return colors.Color(1 - value * 0.6, 1 - value * 0.25, 1 - value * 0.05)
-    v = -value
-    return colors.Color(1 - v * 0.05, 1 - v * 0.25, 1 - v * 0.6)
-
-
-def _correlations_flowables(df, styles):
+def _correlations_flowables(df, styles, content_width, resize_to_fit: bool):
     story = [Paragraph("Corrélations", styles["SectionHeading"])]
     types = detect_column_types(df)
     numeric_cols = [c for c in df.columns if types[c] in ("integer", "float")]
@@ -248,27 +263,20 @@ def _correlations_flowables(df, styles):
         story.append(Spacer(1, 0.6 * cm))
         return story
 
-    corr = df[numeric_cols].corr()
-    header = [""] + numeric_cols
-    rows = [header]
-    for row_name in numeric_cols:
-        rows.append([row_name] + [f"{corr.loc[row_name, c]:.2f}" for c in numeric_cols])
+    # Rendue en image (comme les graphiques) plutôt qu'en Table reportlab :
+    # un Table sans largeur bornée peut dépasser la page dès qu'il y a
+    # beaucoup de colonnes numériques, alors qu'une image est toujours mise à
+    # l'échelle pour tenir dans la largeur de contenu disponible.
+    heatmap_request = Plot2DRequest(session_id="report", plot_type="heatmap", columns=numeric_cols)
+    fig = build_2d_figure(df, heatmap_request)
+    side = max(500, min(1100, 90 * len(numeric_cols)))
+    png_bytes = fig.to_image(format="png", width=side, height=side, scale=1)
 
-    table = Table(rows, repeatRows=1)
-    style_cmds = [
-        ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
-        ("BACKGROUND", (0, 0), (0, -1), _HEADER_BG),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("GRID", (0, 0), (-1, -1), 0.4, _BORDER),
-        ("ALIGN", (1, 1), (-1, -1), "CENTER"),
-    ]
-    for i, row_name in enumerate(numeric_cols):
-        for j, col_name in enumerate(numeric_cols):
-            style_cmds.append(("BACKGROUND", (j + 1, i + 1), (j + 1, i + 1), _correlation_color(corr.loc[row_name, col_name])))
-    table.setStyle(TableStyle(style_cmds))
-    story.append(table)
+    scale_factor = 0.85 if resize_to_fit else 1.0
+    image_width = content_width * scale_factor
+    image = RLImage(io.BytesIO(png_bytes), width=image_width, height=image_width)
+    image.hAlign = "LEFT"
+    story.append(image)
     story.append(Spacer(1, 0.6 * cm))
     return story
 
@@ -282,32 +290,40 @@ def _build_plot_figure(df, spec):
     return builder(df, params)
 
 
-def _plots_flowables(df, plot_specs, styles, page_width):
+def _plots_flowables(df, plot_specs, styles, content_width, resize_to_fit: bool):
     story = [Paragraph("Graphiques", styles["SectionHeading"])]
     if not plot_specs:
         story.append(Paragraph("Aucun graphique sélectionné pour ce rapport.", styles["Body"]))
         story.append(Spacer(1, 0.6 * cm))
         return story
 
-    image_width = page_width - 4 * cm
+    scale_factor = 0.85 if resize_to_fit else 1.0
+    image_width = content_width * scale_factor
     for i, spec in enumerate(plot_specs, start=1):
         fig = _build_plot_figure(df, spec)
         png_bytes = fig.to_image(format="png", width=1000, height=650, scale=1)
         image = RLImage(io.BytesIO(png_bytes), width=image_width, height=image_width * 0.65)
+        image.hAlign = "LEFT"
         caption = spec.title or spec.params.get("plot_type", spec.kind)
         story.append(image)
         story.append(Paragraph(f"Graphique {i} — {caption}", styles["PlotCaption"]))
     return story
 
 
-def build_report(session, sections: list[str], plot_specs: list, page_format: str, orientation: str) -> bytes:
+def build_report(
+    session,
+    sections: list[str],
+    plot_specs: list,
+    page_format: str,
+    orientation: str,
+    resize_plots_to_fit: bool = True,
+) -> bytes:
     df = session.active_df()
     if df.shape[0] == 0:
         raise AppError(422, "EMPTY_DATASET", "Impossible de générer un rapport : le jeu de données actif est vide.")
 
     buffer = io.BytesIO()
     pagesize = _page_size(page_format, orientation)
-    width, _height = pagesize
 
     doc = BaseDocTemplate(
         buffer,
@@ -321,22 +337,28 @@ def build_report(session, sections: list[str], plot_specs: list, page_format: st
     frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="normal")
     doc.addPageTemplates([PageTemplate(id="report", frames=[frame], onPage=_header_footer(session))])
 
+    content_width = doc.width  # largeur de contenu disponible, marges déjà déduites
     styles = _styles()
     story: list = list(_cover_flowables(session, df, styles))
     story.append(PageBreak())
 
     section_builders = {
-        "summary": lambda: _summary_flowables(session, df, styles),
-        "metadata": lambda: _metadata_flowables(session, styles),
-        "preview": lambda: _preview_flowables(df, styles),
-        "stats": lambda: _stats_flowables(df, styles),
-        "correlations": lambda: _correlations_flowables(df, styles),
-        "plots": lambda: _plots_flowables(df, plot_specs, styles, width),
+        "summary": lambda: _summary_flowables(session, df, styles, content_width),
+        "metadata": lambda: _metadata_flowables(session, styles, content_width),
+        "preview": lambda: _preview_flowables(df, styles, content_width),
+        "stats": lambda: _stats_flowables(df, styles, content_width),
+        "correlations": lambda: _correlations_flowables(df, styles, content_width, resize_plots_to_fit),
+        "plots": lambda: _plots_flowables(df, plot_specs, styles, content_width, resize_plots_to_fit),
     }
-    for key in sections:
-        builder = section_builders.get(key)
-        if builder:
-            story.extend(builder())
+
+    is_first_section = True
+    for key in _SECTION_ORDER:
+        if key not in sections:
+            continue
+        if key in _BIG_SECTIONS and not is_first_section:
+            story.append(PageBreak())
+        story.extend(section_builders[key]())
+        is_first_section = False
 
     doc.build(story)
     return buffer.getvalue()

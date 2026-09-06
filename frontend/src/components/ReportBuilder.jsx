@@ -16,6 +16,7 @@ export default function ReportBuilder({ sessionId, savedPlots, onRemovePlot, onC
   const [selectedPlotIds, setSelectedPlotIds] = useState(savedPlots.map((p) => p.id))
   const [pageFormat, setPageFormat] = useState('A4')
   const [orientation, setOrientation] = useState('portrait')
+  const [resizePlotsToFit, setResizePlotsToFit] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState(null)
 
@@ -41,6 +42,7 @@ export default function ReportBuilder({ sessionId, savedPlots, onRemovePlot, onC
         plots: plotsPayload,
         pageFormat,
         orientation,
+        resizePlotsToFit,
       })
       const filename = extractFilename(response.headers['content-disposition'], 'rapport.pdf')
       triggerBlobDownload(response.data, filename)
@@ -160,6 +162,18 @@ export default function ReportBuilder({ sessionId, savedPlots, onRemovePlot, onC
             </select>
           </label>
         </div>
+
+        <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+          <input
+            type="checkbox"
+            checked={resizePlotsToFit}
+            onChange={(e) => setResizePlotsToFit(e.target.checked)}
+          />
+          Resize plots to fit page
+          <span className="text-xs text-slate-400 dark:text-slate-500">
+            (graphiques et heatmap toujours contenus dans les marges, taille plus compacte)
+          </span>
+        </label>
 
         {error && (
           <p className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
