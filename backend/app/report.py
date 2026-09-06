@@ -26,6 +26,7 @@ from reportlab.platypus import BaseDocTemplate, Frame, PageBreak, PageTemplate, 
 from reportlab.platypus import Image as RLImage
 
 from app.errors import AppError
+from app.ml import run_classification, run_clustering, run_dimensionality_reduction, run_regression
 from app.models import Plot1DRequest, Plot2DRequest, Plot3DRequest
 from app.parsing import detect_column_types
 from app.plotting import build_1d_figure, build_2d_figure, build_3d_figure
@@ -37,6 +38,25 @@ _PLOT_BUILDERS = {
     "1d": (Plot1DRequest, build_1d_figure),
     "2d": (Plot2DRequest, build_2d_figure),
     "3d": (Plot3DRequest, build_3d_figure),
+}
+
+# Chaque runner ML prend (df, params_dict) et retourne un dict avec une clé
+# interne "_fig" (figure Plotly principale) -- réutilisé tel quel pour
+# intégrer une analyse ML au rapport, sans dupliquer la logique des routes
+# /api/ml/*.
+_ML_RUNNERS = {
+    "regression": lambda df, p: run_regression(
+        df, p["features"], p["target"], p.get("model_type", "linear"), p.get("degree", 2),
+    ),
+    "classification": lambda df, p: run_classification(
+        df, p["features"], p["target"], p.get("model_type", "logistic"), p.get("params", {}),
+    ),
+    "clustering": lambda df, p: run_clustering(
+        df, p["features"], p.get("model_type", "kmeans"), p.get("params", {}), p.get("color_by"),
+    ),
+    "pca": lambda df, p: run_dimensionality_reduction(
+        df, p["features"], p.get("n_components", 2), p.get("method", "pca"), p.get("color_by"),
+    ),
 }
 
 # Sections qui démarrent toujours sur une nouvelle page (contenu volumineux :
@@ -282,6 +302,14 @@ def _correlations_flowables(df, styles, content_width, resize_to_fit: bool):
 
 
 def _build_plot_figure(df, spec):
+    if spec.kind == "ml":
+        ml_type = spec.params.get("ml_type")
+        runner = _ML_RUNNERS.get(ml_type)
+        if not runner:
+            raise AppError(400, "UNKNOWN_ML_TYPE", f"Type d'analyse ML inconnu pour le rapport : {ml_type}")
+        result = runner(df, spec.params)
+        return result["_fig"]
+
     model_cls, builder = _PLOT_BUILDERS[spec.kind]
     try:
         params = model_cls(session_id="report", **spec.params)

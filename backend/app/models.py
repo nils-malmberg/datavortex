@@ -68,7 +68,7 @@ class Plot3DRequest(BaseModel):
 
 class ExportPlotRequest(BaseModel):
     session_id: str
-    kind: Literal["1d", "2d", "3d"]
+    kind: Literal["1d", "2d", "3d", "ml"]
     params: dict
     format: Literal["png", "svg", "html"]
     width: int = 900
@@ -121,7 +121,7 @@ ReportSection = Literal["summary", "stats", "preview", "plots", "correlations", 
 
 
 class ReportPlotSpec(BaseModel):
-    kind: Literal["1d", "2d", "3d"]
+    kind: Literal["1d", "2d", "3d", "ml"]
     params: dict
     title: Optional[str] = None
 
@@ -144,3 +144,36 @@ class MergeRequest(BaseModel):
     left_suffix: str = "_x"
     right_suffix: str = "_y"
 
+
+# --- Machine Learning (Phase 7) -----------------------------------------------
+
+class RegressionRequest(BaseModel):
+    session_id: str
+    features: list[str]
+    target: str
+    model_type: Literal["linear", "polynomial"] = "linear"
+    degree: int = 2
+
+
+class ClassificationRequest(BaseModel):
+    session_id: str
+    features: list[str]
+    target: str
+    model_type: Literal["logistic", "decision_tree", "random_forest"] = "logistic"
+    params: dict = {}
+
+
+class ClusteringRequest(BaseModel):
+    session_id: str
+    features: list[str]
+    model_type: Literal["kmeans", "dbscan"] = "kmeans"
+    params: dict = {}
+    color_by: Optional[str] = None
+
+
+class PCARequest(BaseModel):
+    session_id: str
+    features: list[str]
+    n_components: Literal[2, 3] = 2
+    method: Literal["pca", "tsne", "umap"] = "pca"
+    color_by: Optional[str] = None

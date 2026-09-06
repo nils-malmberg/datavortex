@@ -99,4 +99,29 @@ export function mergeSessions(sessionIds, mode, keyColumn, leftSuffix = '_x', ri
   })
 }
 
+export function runRegression(sessionId, { features, target, modelType = 'linear', degree = 2 }) {
+  return api.post('/ml/regression', {
+    session_id: sessionId, features, target, model_type: modelType, degree,
+  })
+}
+
+export function runClassification(sessionId, { features, target, modelType = 'logistic', params = {} }) {
+  return api.post('/ml/classification', {
+    session_id: sessionId, features, target, model_type: modelType, params,
+  })
+}
+
+export function runClustering(sessionId, { features, modelType = 'kmeans', params = {}, colorBy }) {
+  return api.post('/ml/clustering', {
+    session_id: sessionId, features, model_type: modelType, params, color_by: colorBy,
+  })
+}
+
+export function runPCA(sessionId, { features, nComponents = 2, method = 'pca', colorBy }) {
+  return api.post('/ml/pca', {
+    session_id: sessionId, features, n_components: nComponents, method, color_by: colorBy,
+  })
+}
+
+
 export default api

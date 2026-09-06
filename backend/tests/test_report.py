@@ -117,3 +117,28 @@ def test_report_invalid_plot_params_rejected():
     )
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "COLUMN_NOT_FOUND"
+
+
+def test_report_includes_ml_plot():
+    session_id = _upload_and_parse()
+    resp = client.post(
+        "/api/report/pdf",
+        json={
+            "session_id": session_id,
+            "sections": ["plots"],
+            "plots": [
+                {
+                    "kind": "ml",
+                    "params": {
+                        "ml_type": "regression",
+                        "features": ["age"],
+                        "target": "score",
+                        "model_type": "linear",
+                    },
+                    "title": "Régression âge/score",
+                }
+            ],
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.content[:4] == b"%PDF"

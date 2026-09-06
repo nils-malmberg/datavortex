@@ -28,8 +28,11 @@ from app.errors import (
 )
 from app.filtering import evaluate_filter
 from app.formulas import evaluate_formula
+from app.ml import run_classification, run_clustering, run_dimensionality_reduction, run_regression
 from app.models import (
     ApplyFilterRequest,
+    ClassificationRequest,
+    ClusteringRequest,
     CreateColumnRequest,
     ExportCsvRequest,
     ExportPlotRequest,
@@ -37,9 +40,11 @@ from app.models import (
     MergeRequest,
     ParseRequest,
     ParseResponse,
+    PCARequest,
     Plot1DRequest,
     Plot2DRequest,
     Plot3DRequest,
+    RegressionRequest,
     UploadResponse,
 )
 from app.parsing import (
@@ -526,3 +531,46 @@ def generate_report_pdf(body: GenerateReportRequest) -> Response:
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
+
+# --- Machine Learning (Phase 7) -----------------------------------------------
+
+def _finalize_ml_result(result: dict) -> dict:
+    """Convertit les figures Plotly internes (_fig/_extra_figs) en JSON-safe
+    sous une clé unique `plot_data`, pour une réponse API homogène."""
+    fig = result.pop("_fig")
+    extra = result.pop("_extra_figs", {})
+    plot_data = {"main": json.loads(fig.to_json())}
+    for name, extra_fig in extra.items():
+        plot_data[name] = json.loads(extra_fig.to_json())
+    result["plot_data"] = plot_data
+    return result
+
+
+@app.post("/api/ml/regression")
+def ml_regression(body: RegressionRequest) -> dict:
+    session = _get_parsed_session_or_error(body.session_id)
+    result = run_regression(session.active_df(), body.features, body.target, body.model_type, body.degree)
+    return _finalize_ml_result(result)
+
+
+@app.post("/api/ml/classification")
+def ml_classification(body: ClassificationRequest) -> dict:
+    session = _get_parsed_session_or_error(body.session_id)
+    result = run_classification(session.active_df(), body.features, body.target, body.model_type, body.params)
+    return _finalize_ml_result(result)
+
+
+@app.post("/api/ml/clustering")
+def ml_clustering(body: ClusteringRequest) -> dict:
+    session = _get_parsed_session_or_error(body.session_id)
+    result = run_clustering(session.active_df(), body.features, body.model_type, body.params, body.color_by)
+    return _finalize_ml_result(result)
+
+
+@app.post("/api/ml/pca")
+def ml_pca(body: PCARequest) -> dict:
+    session = _get_parsed_session_or_error(body.session_id)
+    result = run_dimensionality_reduction(
+        session.active_df(), body.features, body.n_components, body.method, body.color_by,
+    )
+    return _finalize_ml_result(result)

@@ -6,12 +6,14 @@ import FilterBuilder from './FilterBuilder'
 import ColumnCreator from './ColumnCreator'
 import ExportData from './ExportData'
 import ReportBuilder from './ReportBuilder'
+import MLAnalysis from './MLAnalysis'
 
 const TABS = [
   { value: 'stats', label: 'Stats' },
   { value: 'plots', label: 'Visualisations' },
   { value: 'filters', label: 'Filtres' },
   { value: 'columns', label: 'Colonnes calculées' },
+  { value: 'ml', label: 'Machine Learning' },
   { value: 'export', label: 'Export' },
 ]
 
@@ -84,6 +86,13 @@ export default function Dashboard({ parseResult, filename, onReset }) {
         )}
         {activeTab === 'columns' && (
           <ColumnCreator sessionId={sessionId} onColumnCreated={bumpDataVersion} />
+        )}
+        {activeTab === 'ml' && (
+          <MLAnalysis
+            sessionId={sessionId}
+            refreshKey={dataVersion}
+            onAddToReport={handleAddPlotToReport}
+          />
         )}
         {activeTab === 'export' && <ExportData sessionId={sessionId} refreshKey={dataVersion} />}
       </div>
