@@ -123,6 +123,43 @@ export function runPCA(sessionId, { features, nComponents = 2, method = 'pca', c
   })
 }
 
+// --- Réseaux de neurones & export de modèles (Phase 8.1) ----------------------
+
+export function runNeuralNetwork(sessionId, { features, target, task, layers, optimizer, learningRate, batchSize, epochs, validationSplit }) {
+  return api.post('/ml/neural_network', {
+    session_id: sessionId,
+    features,
+    target,
+    task,
+    layers,
+    optimizer,
+    learning_rate: learningRate,
+    batch_size: batchSize,
+    epochs,
+    validation_split: validationSplit,
+  })
+}
+
+export function exportModel(sessionId, modelId, format) {
+  return api.post(
+    '/ml/export/model',
+    { session_id: sessionId, model_id: modelId, format },
+    { responseType: 'blob' },
+  )
+}
+
+export function exportModelMetadata(sessionId, modelId) {
+  return api.post('/ml/export/metadata', { session_id: sessionId, model_id: modelId })
+}
+
+export function exportTrainingScript(sessionId, modelId) {
+  return api.post(
+    '/ml/export/training_script',
+    { session_id: sessionId, model_id: modelId },
+    { responseType: 'blob' },
+  )
+}
+
 
 export default api
 

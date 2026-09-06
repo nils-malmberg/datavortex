@@ -539,6 +539,9 @@ def run_classification(
 # Clustering
 # --------------------------------------------------------------------------
 
+MAX_DENDROGRAM_LABELS = 40  # au-delà, les étiquettes de feuilles se chevauchent et deviennent illisibles
+
+
 def _dendrogram_figure(Z: np.ndarray, labels: list[str]) -> go.Figure:
     """Reconstruit le dendrogramme scipy en figure Plotly (segments de droite)."""
     dendro = dendrogram(Z, no_plot=True, labels=labels)
@@ -546,9 +549,15 @@ def _dendrogram_figure(Z: np.ndarray, labels: list[str]) -> go.Figure:
     for xs, ys in zip(dendro["icoord"], dendro["dcoord"]):
         fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color=PALETTE[0]), showlegend=False))
     tick_positions = [5 + 10 * i for i in range(len(dendro["ivl"]))]
+    show_labels = len(dendro["ivl"]) <= MAX_DENDROGRAM_LABELS
+    xaxis = (
+        dict(tickmode="array", tickvals=tick_positions, ticktext=dendro["ivl"], tickangle=45)
+        if show_labels
+        else dict(tickmode="array", tickvals=[], ticktext=[])
+    )
     fig.update_layout(
         title="Dendrogramme (classification hiérarchique)",
-        xaxis=dict(tickmode="array", tickvals=tick_positions, ticktext=dendro["ivl"], tickangle=45),
+        xaxis={**xaxis, "title": None if show_labels else f"{len(dendro['ivl'])} échantillons (étiquettes masquées : trop nombreuses)"},
         yaxis_title="Distance",
     )
     return fig
