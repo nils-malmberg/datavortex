@@ -26,12 +26,16 @@ from reportlab.platypus import BaseDocTemplate, Frame, PageBreak, PageTemplate, 
 from reportlab.platypus import Image as RLImage
 
 from app.errors import AppError
+from app.groupby_service import run_groupby
 from app.ml import run_classification, run_clustering, run_dimensionality_reduction, run_regression
-from app.models import AdvancedPlotRequest, Plot1DRequest, Plot2DRequest, Plot3DRequest
+from app.models import AdvancedPlotRequest, GroupByRequest, PivotRequest, Plot1DRequest, Plot2DRequest, Plot3DRequest
 from app.parsing import detect_column_types
+from app.pivot_service import run_pivot
 from app.plotting import build_1d_figure, build_2d_figure, build_3d_figure
 from app.plotting_service import build_advanced_figure
-from app.stats import column_summary, dataframe_summary
+from app.profile_service import detailed_profile
+from app.stats import dataframe_summary
+from app.stats_service import advanced_stats
 
 PAGE_SIZES = {"A4": A4, "Letter": LETTER}
 
@@ -61,10 +65,11 @@ _ML_RUNNERS = {
     ),
 }
 
-# Sections qui démarrent toujours sur une nouvelle page (contenu volumineux :
-# tableaux ou images qui méritent leur propre page plutôt que de s'enchaîner).
-_BIG_SECTIONS = {"preview", "stats", "correlations", "plots"}
-_SECTION_ORDER = ["summary", "metadata", "preview", "stats", "correlations", "plots"]
+# Philosophie Phase 8.1 : le résumé, les statistiques détaillées (avec
+# corrélations et qualité des données) et les suggestions sont TOUJOURS
+# inclus, quel que soit le contenu de `sections` — seuls l'aperçu des
+# données/métadonnées (hérités de la Phase 6) et les graphiques/analyses
+# ajoutés par l'utilisateur restent sélectionnables.
 
 _BRAND = colors.HexColor("#2563eb")
 _MUTED = colors.HexColor("#64748b")
@@ -132,13 +137,14 @@ def _cover_flowables(session, df, styles):
     ]
 
 
-def _summary_flowables(session, df, styles, content_width):
+def _summary_flowables(session, df, styles, content_width, profile):
     types = detect_column_types(df)
     type_counts: dict[str, int] = {}
     for t in types.values():
         type_counts[t] = type_counts.get(t, 0) + 1
     type_line = ", ".join(f"{count} {name}" for name, count in sorted(type_counts.items()))
     summary = dataframe_summary(df)
+    quality = profile["quality"]
 
     story = [Paragraph("Résumé exécutif", styles["SectionHeading"])]
     rows = [
@@ -147,6 +153,7 @@ def _summary_flowables(session, df, styles, content_width):
         ["Types de colonnes", type_line],
         ["Taille en mémoire", f"{summary['memory_usage_bytes'] / 1024:.1f} KB"],
         ["Session filtrée", "Oui" if session.filtered_df is not None else "Non"],
+        ["Score de qualité", f'{quality["score"]}/100 — {quality["grade"]}'],
     ]
     story.append(_kv_table(rows, styles, content_width))
     story.append(Spacer(1, 0.6 * cm))
@@ -196,51 +203,203 @@ def _kv_table(rows: list[list[str]], styles, content_width: float) -> Table:
     return table
 
 
-def _format_stat_summary(col_type: str, stats: dict) -> str:
-    if col_type in ("integer", "float"):
-        mean, std = stats.get("mean"), stats.get("std")
-        if mean is None:
-            return "—"
-        return f"moyenne {mean:.2f}, écart-type {std:.2f}" if std is not None else f"moyenne {mean:.2f}"
-    if col_type == "boolean":
-        return f"vrai : {stats.get('pct_true', 0)}%"
-    mode = stats.get("mode")
-    unique = stats.get("unique")
-    return f"{unique} valeurs uniques, mode : {mode}" if mode is not None else f"{unique} valeurs uniques"
+def _quality_tone_hex(score: float) -> str:
+    if score >= 90:
+        return "#16a34a"
+    if score >= 70:
+        return "#d97706"
+    return "#dc2626"
 
 
-def _stats_flowables(df, styles, content_width):
-    story = [Paragraph("Statistiques par colonne", styles["SectionHeading"])]
-    fixed = [3.2 * cm, 2 * cm, 1.8 * cm, 2.2 * cm]
-    summary_width = max(content_width - sum(fixed), 3 * cm)
-    col_widths = fixed + [summary_width]
+def _numeric_stats_table(stats_summary: dict, profile_by_col: dict, styles, content_width) -> Table:
+    header = ["Colonne", "Moy.", "Méd.", "É.-T.", "CV (%)", "Min", "Q1", "Q3", "Max", "Asym."]
+    col_widths = [content_width * w for w in (0.18, 0.09, 0.09, 0.10, 0.09, 0.09, 0.09, 0.09, 0.09, 0.09)]
+    rows = [[_cell(h, styles["CellHeader"]) for h in header]]
 
-    header = [_cell(h, styles["CellHeader"]) for h in ["Colonne", "Type", "Count", "Manquants", "Résumé"]]
-    rows = [header]
-    for col in df.columns:
-        summary = column_summary(df[col])
-        rows.append(
-            [
-                _cell(col, styles["CellText"]),
-                _cell(summary["type"], styles["CellText"]),
-                _cell(summary["stats"].get("count", "—"), styles["CellText"]),
-                _cell(f"{summary['missing_pct']}%", styles["CellText"]),
-                _cell(_format_stat_summary(summary["type"], summary["stats"]), styles["CellText"]),
-            ]
-        )
+    def fmt(v):
+        return "—" if v is None else f"{v:.3g}"
+
+    for col, stats in stats_summary.items():
+        skew = profile_by_col.get(col, {}).get("skewness")
+        rows.append([
+            _cell(col, styles["CellText"]),
+            _cell(fmt(stats.get("mean")), styles["CellText"]),
+            _cell(fmt(stats.get("median")), styles["CellText"]),
+            _cell(fmt(stats.get("std")), styles["CellText"]),
+            _cell(fmt(stats.get("cv_percent")), styles["CellText"]),
+            _cell(fmt(stats.get("min")), styles["CellText"]),
+            _cell(fmt(stats.get("q1")), styles["CellText"]),
+            _cell(fmt(stats.get("q3")), styles["CellText"]),
+            _cell(fmt(stats.get("max")), styles["CellText"]),
+            _cell(fmt(skew), styles["CellText"]),
+        ])
     table = Table(rows, colWidths=col_widths, repeatRows=1)
-    table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("GRID", (0, 0), (-1, -1), 0.5, _BORDER),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ]
-        )
-    )
-    story.append(table)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("GRID", (0, 0), (-1, -1), 0.5, _BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    return table
+
+
+def _categorical_stats_table(categorical_cols, profile_by_col, styles, content_width) -> Table:
+    header = ["Colonne", "Cardinalité", "Mode", "Top valeurs"]
+    col_widths = [content_width * w for w in (0.2, 0.15, 0.2, 0.45)]
+    rows = [[_cell(h, styles["CellHeader"]) for h in header]]
+    for col in categorical_cols:
+        prof = profile_by_col.get(col, {})
+        top = ", ".join(f"{v['value']} ({v['count']})" for v in prof.get("top_values", [])[:5])
+        rows.append([
+            _cell(col, styles["CellText"]),
+            _cell(prof.get("unique", "—"), styles["CellText"]),
+            _cell(prof.get("mode", "—"), styles["CellText"]),
+            _cell(top or "—", styles["CellText"]),
+        ])
+    table = Table(rows, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("GRID", (0, 0), (-1, -1), 0.5, _BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    return table
+
+
+def _top_correlations_table(correlations: dict, styles, content_width) -> Table | None:
+    cols = correlations.get("columns") or []
+    matrix = correlations.get("matrix") or []
+    pvalues = correlations.get("p_values") or []
+    if len(cols) < 2:
+        return None
+    pairs = []
+    for i in range(len(cols)):
+        for j in range(i + 1, len(cols)):
+            r = matrix[i][j]
+            if r is None:
+                continue
+            pairs.append((abs(r), cols[i], cols[j], r, pvalues[i][j]))
+    pairs.sort(key=lambda t: t[0], reverse=True)
+
+    header = ["Paire de colonnes", "r", "p-value"]
+    col_widths = [content_width * 0.6, content_width * 0.2, content_width * 0.2]
+    rows = [[_cell(h, styles["CellHeader"]) for h in header]]
+    for _, a, b, r, p in pairs[:5]:
+        p_text = "< 0.001" if p is not None and p < 0.001 else (f"{p:.3f}" if p is not None else "—")
+        rows.append([_cell(f"{a} ↔ {b}", styles["CellText"]), _cell(f"{r:.3f}", styles["CellText"]), _cell(p_text, styles["CellText"])])
+    table = Table(rows, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("GRID", (0, 0), (-1, -1), 0.5, _BORDER),
+    ]))
+    return table
+
+
+def _detailed_stats_flowables(df, styles, content_width, resize_to_fit: bool, stats, profile):
+    """Section statistique toujours incluse (Phase 8.1) : réutilise les mêmes
+    calculs que les onglets Stats/Profil de l'application (advanced_stats,
+    detailed_profile) plutôt que de les refaire, pour rester cohérent avec ce
+    que l'utilisateur voit à l'écran."""
+    types = detect_column_types(df)
+    numeric_cols = [c for c in df.columns if types[c] in ("integer", "float")]
+    categorical_cols = [c for c in df.columns if c not in numeric_cols]
+
+    profile_by_col = profile["profile"]
+    quality = profile["quality"]
+
+    story = [Paragraph("Statistiques détaillées", styles["SectionHeading"])]
+
+    # Qualité des données : score global + détail par dimension.
+    story.append(Paragraph(
+        f'<b>Score de qualité : <font color="{_quality_tone_hex(quality["score"])}">'
+        f'{quality["score"]}/100 — {quality["grade"]}</font></b>',
+        styles["Body"],
+    ))
+    story.append(Spacer(1, 0.2 * cm))
+    quality_rows = [[_cell(h, styles["CellHeader"]) for h in ["Dimension", "Score", "Détail"]]]
+    for dim in quality["dimensions"].values():
+        quality_rows.append([
+            _cell(dim["label"], styles["CellText"]),
+            _cell(f"{dim['score']}%", styles["CellText"]),
+            _cell(dim["detail"], styles["CellText"]),
+        ])
+    quality_table = Table(quality_rows, colWidths=[3.5 * cm, 2 * cm, content_width - 5.5 * cm], repeatRows=1)
+    quality_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("GRID", (0, 0), (-1, -1), 0.5, _BORDER),
+    ]))
+    story.append(quality_table)
+    story.append(Spacer(1, 0.5 * cm))
+
+    if numeric_cols:
+        story.append(Paragraph("Colonnes numériques", styles["Body"]))
+        story.append(Spacer(1, 0.1 * cm))
+        story.append(_numeric_stats_table(stats["summary"], profile_by_col, styles, content_width))
+        story.append(Spacer(1, 0.5 * cm))
+
+    if categorical_cols:
+        story.append(Paragraph("Colonnes catégorielles", styles["Body"]))
+        story.append(Spacer(1, 0.1 * cm))
+        story.append(_categorical_stats_table(categorical_cols, profile_by_col, styles, content_width))
+        story.append(Spacer(1, 0.5 * cm))
+
+    if len(numeric_cols) >= 2:
+        story.append(Paragraph("Corrélations", styles["Body"]))
+        story.append(Spacer(1, 0.1 * cm))
+        heatmap_request = Plot2DRequest(session_id="report", plot_type="heatmap", columns=numeric_cols)
+        fig = build_2d_figure(df, heatmap_request)
+        side = max(500, min(1100, 90 * len(numeric_cols)))
+        png_bytes = fig.to_image(format="png", width=side, height=side, scale=1)
+        scale_factor = 0.7 if resize_to_fit else 0.85
+        image_width = content_width * scale_factor
+        image = RLImage(io.BytesIO(png_bytes), width=image_width, height=image_width)
+        image.hAlign = "LEFT"
+        story.append(image)
+        story.append(Spacer(1, 0.3 * cm))
+        top_table = _top_correlations_table(stats["correlations"], styles, content_width)
+        if top_table is not None:
+            story.append(Paragraph("Corrélations les plus fortes", styles["Body"]))
+            story.append(Spacer(1, 0.1 * cm))
+            story.append(top_table)
+        story.append(Spacer(1, 0.5 * cm))
+
+    missing = stats["missing"]
+    missing_with_gaps = [c for c in missing.get("by_column", []) if c.get("missing_count", 0) > 0]
+    if missing_with_gaps:
+        story.append(Paragraph("Données manquantes", styles["Body"]))
+        story.append(Spacer(1, 0.1 * cm))
+        rows = [[_cell(h, styles["CellHeader"]) for h in ["Colonne", "Manquants", "%"]]]
+        for c in sorted(missing_with_gaps, key=lambda c: c["missing_pct"], reverse=True):
+            rows.append([_cell(c["column"], styles["CellText"]), _cell(c["missing_count"], styles["CellText"]), _cell(f"{c['missing_pct']}%", styles["CellText"])])
+        table = Table(rows, colWidths=[content_width * 0.5, content_width * 0.25, content_width * 0.25], repeatRows=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
+            ("GRID", (0, 0), (-1, -1), 0.5, _BORDER),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(table)
+        story.append(Spacer(1, 0.5 * cm))
+
+    return story
+
+
+def _suggestions_flowables(styles, content_width, profile):
+    story = [Paragraph("Suggestions", styles["SectionHeading"])]
+    suggestions = profile["suggestions"]
+    if not suggestions:
+        story.append(Paragraph("Aucune suggestion : le jeu de données ne présente pas de problème notable détecté.", styles["Body"]))
+        story.append(Spacer(1, 0.6 * cm))
+        return story
+    for s in suggestions:
+        story.append(Paragraph(f'<b>[{s["priority"].upper()}] {s["title"]}</b> — {s["detail"]}', styles["Body"]))
+        story.append(Spacer(1, 0.1 * cm))
     story.append(Spacer(1, 0.6 * cm))
     return story
 
@@ -276,33 +435,6 @@ def _preview_flowables(df, styles, content_width, max_rows: int = 15, max_cols: 
     return story
 
 
-def _correlations_flowables(df, styles, content_width, resize_to_fit: bool):
-    story = [Paragraph("Corrélations", styles["SectionHeading"])]
-    types = detect_column_types(df)
-    numeric_cols = [c for c in df.columns if types[c] in ("integer", "float")]
-    if len(numeric_cols) < 2:
-        story.append(Paragraph("Pas assez de colonnes numériques pour calculer des corrélations.", styles["Body"]))
-        story.append(Spacer(1, 0.6 * cm))
-        return story
-
-    # Rendue en image (comme les graphiques) plutôt qu'en Table reportlab :
-    # un Table sans largeur bornée peut dépasser la page dès qu'il y a
-    # beaucoup de colonnes numériques, alors qu'une image est toujours mise à
-    # l'échelle pour tenir dans la largeur de contenu disponible.
-    heatmap_request = Plot2DRequest(session_id="report", plot_type="heatmap", columns=numeric_cols)
-    fig = build_2d_figure(df, heatmap_request)
-    side = max(500, min(1100, 90 * len(numeric_cols)))
-    png_bytes = fig.to_image(format="png", width=side, height=side, scale=1)
-
-    scale_factor = 0.85 if resize_to_fit else 1.0
-    image_width = content_width * scale_factor
-    image = RLImage(io.BytesIO(png_bytes), width=image_width, height=image_width)
-    image.hAlign = "LEFT"
-    story.append(image)
-    story.append(Spacer(1, 0.6 * cm))
-    return story
-
-
 def _build_plot_figure(df, spec):
     if spec.kind == "ml":
         ml_type = spec.params.get("ml_type")
@@ -311,6 +443,16 @@ def _build_plot_figure(df, spec):
             raise AppError(400, "UNKNOWN_ML_TYPE", f"Type d'analyse ML inconnu pour le rapport : {ml_type}")
         result = runner(df, spec.params)
         return result["_fig"]
+
+    if spec.kind == "groupby":
+        body = GroupByRequest(session_id="report", **spec.params)
+        result = run_groupby(df, body.group_by, body.aggregations, body.sort_by, body.sort_ascending, body.limit)
+        return result["figure"]
+
+    if spec.kind == "pivot":
+        body = PivotRequest(session_id="report", **spec.params)
+        result = run_pivot(df, body.index, body.columns, body.values, body.aggfunc, body.margins, body.percentage)
+        return result["figure"]
 
     model_cls, builder = _PLOT_BUILDERS[spec.kind]
     try:
@@ -369,26 +511,28 @@ def build_report(
 
     content_width = doc.width  # largeur de contenu disponible, marges déjà déduites
     styles = _styles()
+    profile = detailed_profile(df)
+    stats = advanced_stats(df)
+
     story: list = list(_cover_flowables(session, df, styles))
     story.append(PageBreak())
 
-    section_builders = {
-        "summary": lambda: _summary_flowables(session, df, styles, content_width),
-        "metadata": lambda: _metadata_flowables(session, styles, content_width),
-        "preview": lambda: _preview_flowables(df, styles, content_width),
-        "stats": lambda: _stats_flowables(df, styles, content_width),
-        "correlations": lambda: _correlations_flowables(df, styles, content_width, resize_plots_to_fit),
-        "plots": lambda: _plots_flowables(df, plot_specs, styles, content_width, resize_plots_to_fit),
-    }
+    # Toujours inclus (Phase 8.1) : résumé exécutif, statistiques détaillées
+    # (numériques/catégorielles/corrélations/qualité/manquants) et suggestions.
+    story.extend(_summary_flowables(session, df, styles, content_width, profile))
+    if "metadata" in sections:
+        story.extend(_metadata_flowables(session, styles, content_width))
+    story.append(PageBreak())
+    story.extend(_detailed_stats_flowables(df, styles, content_width, resize_plots_to_fit, stats, profile))
+    story.extend(_suggestions_flowables(styles, content_width, profile))
 
-    is_first_section = True
-    for key in _SECTION_ORDER:
-        if key not in sections:
-            continue
-        if key in _BIG_SECTIONS and not is_first_section:
-            story.append(PageBreak())
-        story.extend(section_builders[key]())
-        is_first_section = False
+    if "preview" in sections:
+        story.append(PageBreak())
+        story.extend(_preview_flowables(df, styles, content_width))
+
+    if plot_specs:
+        story.append(PageBreak())
+        story.extend(_plots_flowables(df, plot_specs, styles, content_width, resize_plots_to_fit))
 
     doc.build(story)
     return buffer.getvalue()

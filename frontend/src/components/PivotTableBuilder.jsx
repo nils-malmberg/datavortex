@@ -46,7 +46,7 @@ const PERCENTAGE_MODES = [
  * Tableau croisé dynamique : lignes × colonnes, une valeur agrégée par cellule.
  * La heatmap associée rend immédiatement lisible où se concentrent les valeurs.
  */
-export default function PivotTableBuilder({ sessionId, refreshKey }) {
+export default function PivotTableBuilder({ sessionId, refreshKey, onAddToReport }) {
   const saveFile = useSaveFile()
   const [columns, setColumns] = useState([])
   const [columnTypes, setColumnTypes] = useState({})
@@ -239,6 +239,22 @@ export default function PivotTableBuilder({ sessionId, refreshKey }) {
                 </p>
               )}
             </div>
+          )}
+
+          {onAddToReport && (
+            <button
+              onClick={() =>
+                onAddToReport({
+                  id: crypto.randomUUID(),
+                  kind: 'pivot',
+                  params: payload,
+                  label: `Pivot : ${index.join(', ')} × ${pivotColumns.join(', ') || '—'}`,
+                })
+              }
+              className={`${BUTTON_CLASS} self-start`}
+            >
+              + Ajouter au rapport
+            </button>
           )}
         </>
       )}

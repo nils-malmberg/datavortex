@@ -313,8 +313,8 @@ export default function Dashboard({ parseResult, filename, onReset, onInfoChange
           {activeTab === 'columns' && (
             <ColumnsPanel sessionId={sessionId} onColumnsChanged={bumpDataVersion} />
           )}
-          {activeTab === 'groupby' && <GroupByAnalysis {...panelProps} />}
-          {activeTab === 'pivot' && <PivotTableBuilder {...panelProps} />}
+          {activeTab === 'groupby' && <GroupByAnalysis {...panelProps} onAddToReport={handleAddPlotToReport} />}
+          {activeTab === 'pivot' && <PivotTableBuilder {...panelProps} onAddToReport={handleAddPlotToReport} />}
           {activeTab === 'profile' && <DataProfile {...panelProps} />}
           {activeTab === 'tests' && <StatisticalTests {...panelProps} />}
           {activeTab === 'ml' && <MLAnalysis {...panelProps} onAddToReport={handleAddPlotToReport} />}

@@ -44,7 +44,7 @@ let nextId = 1
  * Chaque ligne d'agrégation cible une colonne, une fonction et un nom de
  * résultat ; le tableau et le graphique sont recalculés à la demande.
  */
-export default function GroupByAnalysis({ sessionId, refreshKey }) {
+export default function GroupByAnalysis({ sessionId, refreshKey, onAddToReport }) {
   const saveFile = useSaveFile()
   const [columns, setColumns] = useState([])
   const [columnTypes, setColumnTypes] = useState({})
@@ -101,6 +101,21 @@ export default function GroupByAnalysis({ sessionId, refreshKey }) {
     })),
     sortBy,
     sortAscending,
+    limit,
+  })
+
+  // Forme exacte attendue par GroupByRequest côté backend (snake_case), pour
+  // que le rapport PDF puisse relancer ce même calcul.
+  const buildReportParams = () => ({
+    group_by: groupBy,
+    aggregations: aggregations.map(({ column, func, quantile, alias }) => ({
+      column,
+      func,
+      quantile: Number(quantile) || 0.5,
+      alias: alias.trim() || undefined,
+    })),
+    sort_by: sortBy || undefined,
+    sort_ascending: sortAscending,
     limit,
   })
 
@@ -290,6 +305,22 @@ export default function GroupByAnalysis({ sessionId, refreshKey }) {
                 l&apos;échelle écrase les autres.
               </p>
             </div>
+          )}
+
+          {onAddToReport && (
+            <button
+              onClick={() =>
+                onAddToReport({
+                  id: crypto.randomUUID(),
+                  kind: 'groupby',
+                  params: buildReportParams(),
+                  label: `Groupby : ${groupBy.join(', ')}`,
+                })
+              }
+              className={`${BUTTON_CLASS} self-start`}
+            >
+              + Ajouter au rapport
+            </button>
           )}
         </>
       )}

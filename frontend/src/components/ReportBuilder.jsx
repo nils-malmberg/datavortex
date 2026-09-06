@@ -3,30 +3,39 @@ import { generateReportPdf } from '../api/client'
 import { extractFilename } from '../api/download'
 import useSaveFile from '../hooks/useSaveFile'
 
-const SECTIONS = [
-  { value: 'summary', label: 'Résumé exécutif' },
-  { value: 'stats', label: 'Statistiques' },
-  { value: 'preview', label: 'Aperçu des données' },
-  { value: 'plots', label: 'Graphiques' },
-  { value: 'correlations', label: 'Corrélations' },
-  { value: 'metadata', label: 'Métadonnées' },
+const DEFAULT_SECTIONS = [
+  'Page de couverture',
+  'Résumé exécutif (avec score de qualité)',
+  'Statistiques numériques et catégorielles',
+  'Corrélations et p-values',
+  'Données manquantes',
+  'Qualité des données (5 dimensions)',
+  'Suggestions de nettoyage',
 ]
 
+const OPTIONAL_KIND_LABELS = {
+  '1d': 'Graphique', '2d': 'Graphique', '3d': 'Graphique', advanced: 'Graphique',
+  ml: 'Modèle ML', groupby: 'GroupBy', pivot: 'Pivot',
+}
+
+/**
+ * Générateur de rapport PDF (refonte Phase 8.1).
+ *
+ * Philosophie : les statistiques détaillées sont toujours incluses (calculées
+ * côté serveur à partir des mêmes fonctions que les onglets Stats/Profil) —
+ * l'utilisateur ne choisit que les sections coûteuses à générer (graphiques,
+ * modèles ML, GroupBy, Pivot), ajoutées au fil de l'exploration via
+ * « + Ajouter au rapport » sur chaque onglet concerné.
+ */
 export default function ReportBuilder({ sessionId, savedPlots, onRemovePlot, onClose }) {
   const saveFile = useSaveFile()
-  const [selectedSections, setSelectedSections] = useState(SECTIONS.map((s) => s.value))
   const [selectedPlotIds, setSelectedPlotIds] = useState(savedPlots.map((p) => p.id))
+  const [includeDataPreview, setIncludeDataPreview] = useState(false)
   const [pageFormat, setPageFormat] = useState('A4')
   const [orientation, setOrientation] = useState('portrait')
   const [resizePlotsToFit, setResizePlotsToFit] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState(null)
-
-  const toggleSection = (value) => {
-    setSelectedSections((prev) =>
-      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
-    )
-  }
 
   const togglePlot = (id) => {
     setSelectedPlotIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]))
@@ -40,7 +49,7 @@ export default function ReportBuilder({ sessionId, savedPlots, onRemovePlot, onC
         .filter((p) => selectedPlotIds.includes(p.id))
         .map((p) => ({ kind: p.kind, params: p.params, title: p.label }))
       const response = await generateReportPdf(sessionId, {
-        sections: selectedSections,
+        sections: includeDataPreview ? ['preview'] : [],
         plots: plotsPayload,
         pageFormat,
         orientation,
@@ -81,64 +90,64 @@ export default function ReportBuilder({ sessionId, savedPlots, onRemovePlot, onC
         </div>
 
         <div>
-          <p className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
-            Sections à inclure
+          <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            <span aria-hidden="true">✅</span> Inclus par défaut
           </p>
-          <div className="grid grid-cols-2 gap-2">
-            {SECTIONS.map((s) => (
-              <label
-                key={s.value}
-                className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedSections.includes(s.value)}
-                  onChange={() => toggleSection(s.value)}
-                />
-                {s.label}
-              </label>
+          <ul className="flex flex-col gap-1 rounded-md border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-sm text-slate-600 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-slate-300">
+            {DEFAULT_SECTIONS.map((label) => (
+              <li key={label} className="flex items-center gap-2">
+                <input type="checkbox" checked disabled className="accent-emerald-600" />
+                {label}
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
 
-        {selectedSections.includes('plots') && (
-          <div>
-            <p className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
-              Graphiques à inclure
+        <div>
+          <p className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">☐ Sections optionnelles</p>
+          <label className="mb-2 flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input type="checkbox" checked={includeDataPreview} onChange={(e) => setIncludeDataPreview(e.target.checked)} />
+            Aperçu des données (15 premières lignes)
+          </label>
+
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            Graphiques / modèles / analyses ajoutés depuis les onglets
+          </p>
+          {savedPlots.length === 0 ? (
+            <p className="text-sm text-slate-400 dark:text-slate-500">
+              Aucun élément enregistré. Depuis Visualisations, Machine Learning, Groupby ou Pivot, cliquez sur
+              « + Ajouter au rapport ».
             </p>
-            {savedPlots.length === 0 ? (
-              <p className="text-sm text-slate-400 dark:text-slate-500">
-                Aucun graphique enregistré. Depuis l&apos;onglet Visualisations, générez un
-                graphique puis cliquez sur « Ajouter au rapport ».
-              </p>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {savedPlots.map((p) => (
-                  <div
-                    key={p.id}
-                    className="flex items-center justify-between gap-2 rounded-md border border-slate-200 px-2.5 py-1.5 text-sm dark:border-slate-700"
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {savedPlots.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between gap-2 rounded-md border border-slate-200 px-2.5 py-1.5 text-sm dark:border-slate-700"
+                >
+                  <label className="flex flex-1 items-center gap-2 text-slate-700 dark:text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={selectedPlotIds.includes(p.id)}
+                      onChange={() => togglePlot(p.id)}
+                    />
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                      {OPTIONAL_KIND_LABELS[p.kind] || p.kind}
+                    </span>
+                    {p.label}
+                  </label>
+                  <button
+                    onClick={() => onRemovePlot(p.id)}
+                    className="text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                    aria-label="Retirer cet élément"
                   >
-                    <label className="flex flex-1 items-center gap-2 text-slate-700 dark:text-slate-200">
-                      <input
-                        type="checkbox"
-                        checked={selectedPlotIds.includes(p.id)}
-                        onChange={() => togglePlot(p.id)}
-                      />
-                      {p.label}
-                    </label>
-                    <button
-                      onClick={() => onRemovePlot(p.id)}
-                      className="text-slate-400 hover:text-red-600 dark:hover:text-red-400"
-                      aria-label="Retirer ce graphique"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="flex flex-wrap gap-4">
           <label className="flex flex-col gap-1 text-sm">
@@ -171,9 +180,9 @@ export default function ReportBuilder({ sessionId, savedPlots, onRemovePlot, onC
             checked={resizePlotsToFit}
             onChange={(e) => setResizePlotsToFit(e.target.checked)}
           />
-          Resize plots to fit page
+          Adapter les graphiques à la page
           <span className="text-xs text-slate-400 dark:text-slate-500">
-            (graphiques et heatmap toujours contenus dans les marges, taille plus compacte)
+            (graphiques et heatmaps toujours contenus dans les marges, taille plus compacte)
           </span>
         </label>
 
@@ -192,7 +201,7 @@ export default function ReportBuilder({ sessionId, savedPlots, onRemovePlot, onC
           </button>
           <button
             onClick={handleGenerate}
-            disabled={isGenerating || selectedSections.length === 0}
+            disabled={isGenerating}
             className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
           >
             {isGenerating ? 'Génération…' : 'Générer le PDF'}

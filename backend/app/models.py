@@ -125,7 +125,7 @@ ReportSection = Literal["summary", "stats", "preview", "plots", "correlations", 
 
 
 class ReportPlotSpec(BaseModel):
-    kind: Literal["1d", "2d", "3d", "ml", "advanced"]
+    kind: Literal["1d", "2d", "3d", "ml", "advanced", "groupby", "pivot"]
     params: dict
     title: Optional[str] = None
 
