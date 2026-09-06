@@ -71,6 +71,48 @@ RANDOM_STATE = 42
 MIN_SAMPLES_FOR_CV = 15
 MIN_SAMPLES_FOR_PERMUTATION = 20
 
+# Certains algorithmes ont une complexité quadratique ou cubique en nombre de
+# lignes (noyau RBF, processus gaussien, classification hiérarchique) : sans
+# garde-fou, une exécution sur un fichier de 100k lignes prend des dizaines de
+# minutes voire épuise la mémoire, plutôt que d'échouer proprement.
+MAX_SAMPLES_KERNEL_METHOD = 15_000  # SVR / SVM (noyau RBF/poly) : O(n²) à O(n³)
+MAX_SAMPLES_GPR = 5_000  # processus gaussien : inversion de matrice O(n³)
+MAX_SAMPLES_HIERARCHICAL = 5_000  # linkage scipy : matrice de distances O(n²) en mémoire
+MAX_SAMPLES_SILHOUETTE = 5_000  # silhouette_score : distances par paire, O(n²) en temps
+MAX_SAMPLES_DENSITY_CLUSTERING = 30_000  # DBSCAN : dégrade si eps couvre une grande partie du nuage
+MAX_SAMPLES_MEAN_SHIFT = 3_000  # mean shift : convergence lente par point, ne passe pas à l'échelle
+
+# Random Forest sans limite de profondeur construit des arbres jusqu'à isoler
+# chaque ligne individuellement : sur 100k lignes, cela mesure plusieurs
+# dizaines de secondes par arbre. Une profondeur par défaut qui grandit avec
+# le nombre de lignes (au lieu de "illimitée") garde des temps de réponse
+# raisonnables, reste ajustable via le paramètre max_depth explicite.
+def _default_forest_depth(n_samples: int) -> int | None:
+    if n_samples <= 5_000:
+        return None
+    if n_samples <= 20_000:
+        return 20
+    return 12
+
+
+def _forest_n_jobs(n_samples: int) -> int | None:
+    """Le parallélisme a un coût fixe (lancement du pool de threads) qui
+    dépasse le gain sur un petit jeu de données : ne paralléliser qu'à partir
+    d'une taille où la construction des arbres domine ce coût."""
+    return -1 if n_samples > 5_000 else None
+
+
+def _require_sample_limit(n_samples: int, limit: int, method_label: str) -> None:
+    if n_samples > limit:
+        raise AppError(
+            422,
+            "TOO_MANY_SAMPLES",
+            f"{method_label} n'est pas adapté à {n_samples} lignes (limite {limit} pour rester réactif : "
+            "cette méthode a une complexité qui croît au moins comme le carré du nombre de lignes). "
+            "Filtrez le jeu de données, ou choisissez une méthode qui passe mieux à l'échelle "
+            "(random forest, gradient boosting).",
+        )
+
 
 def _require_columns(df: pd.DataFrame, columns: list[str]) -> None:
     for col in columns:
@@ -193,6 +235,7 @@ def run_regression(
     elif model_type == "elastic_net":
         model = ElasticNet(alpha=float(params.get("alpha", 1.0)), l1_ratio=float(params.get("l1_ratio", 0.5)))
     elif model_type == "svr":
+        _require_sample_limit(n, MAX_SAMPLES_KERNEL_METHOD, "La régression à vecteurs de support (SVR)")
         model = Pipeline([
             ("scaler", StandardScaler()),
             ("svr", SVR(
@@ -201,6 +244,7 @@ def run_regression(
             )),
         ])
     elif model_type == "gpr":
+        _require_sample_limit(n, MAX_SAMPLES_GPR, "Le processus gaussien")
         model = Pipeline([
             ("scaler", StandardScaler()),
             ("gpr", GaussianProcessRegressor(
@@ -217,8 +261,9 @@ def run_regression(
     elif model_type == "random_forest":
         model = RandomForestRegressor(
             n_estimators=int(params.get("n_estimators", 100)),
-            max_depth=params.get("max_depth"),
+            max_depth=params.get("max_depth") or _default_forest_depth(n),
             random_state=RANDOM_STATE,
+            n_jobs=_forest_n_jobs(n),
         )
     else:
         raise AppError(400, "UNKNOWN_MODEL_TYPE", f"Type de modèle inconnu : {model_type}")
@@ -422,10 +467,12 @@ def run_classification(
     elif model_type == "random_forest":
         model = RandomForestClassifier(
             n_estimators=int(params.get("n_estimators", 100)),
-            max_depth=params.get("max_depth"),
+            max_depth=params.get("max_depth") or _default_forest_depth(len(X)),
             random_state=RANDOM_STATE,
+            n_jobs=_forest_n_jobs(len(X)),
         )
     elif model_type == "svm":
+        _require_sample_limit(len(X), MAX_SAMPLES_KERNEL_METHOD, "Le SVM (machine à vecteurs de support)")
         model = SVC(
             kernel=params.get("kernel", "rbf"), C=float(params.get("C", 1.0)),
             probability=True, random_state=RANDOM_STATE,
@@ -587,9 +634,15 @@ def run_clustering(
         model = KMeans(n_clusters=k, random_state=RANDOM_STATE, n_init=10)
         labels = model.fit_predict(X_scaled)
     elif model_type == "dbscan":
+        # Ball-tree normalement sous-quadratique, mais dégénère vers un
+        # comportement proche de O(n²) si eps couvre une grande partie du
+        # nuage de points (données très denses) : garde-fou par prudence.
+        _require_sample_limit(n, MAX_SAMPLES_DENSITY_CLUSTERING, "DBSCAN")
         model = DBSCAN(eps=float(params.get("eps", 0.5)), min_samples=int(params.get("min_samples", 5)))
         labels = model.fit_predict(X_scaled)
     elif model_type in ("hierarchical", "agglomerative"):
+        label = "La classification hiérarchique" if model_type == "hierarchical" else "Le clustering agglomératif"
+        _require_sample_limit(n, MAX_SAMPLES_HIERARCHICAL, label)
         k = int(params.get("k", 3))
         if k < 2 or k >= n:
             raise AppError(400, "INVALID_PARAM", "k doit être compris entre 2 et le nombre de lignes - 1.")
@@ -608,6 +661,10 @@ def run_clustering(
         model = GaussianMixture(n_components=k, random_state=RANDOM_STATE)
         labels = model.fit_predict(X_scaled)
     elif model_type == "mean_shift":
+        # Mean shift converge lentement sur des données denses (chaque point
+        # itère jusqu'à convergence vers un mode local) : ne passe pas à
+        # l'échelle, y compris sur des tailles où DBSCAN reste rapide.
+        _require_sample_limit(n, MAX_SAMPLES_MEAN_SHIFT, "Mean Shift")
         bandwidth = params.get("bandwidth")
         bandwidth = float(bandwidth) if bandwidth else estimate_bandwidth(X_scaled, random_state=RANDOM_STATE)
         if bandwidth <= 0:
@@ -621,7 +678,13 @@ def run_clustering(
     silhouette = davies_bouldin = calinski_harabasz = None
     if 2 <= n_clusters_found < n:
         try:
-            silhouette = float(silhouette_score(X_scaled, labels))
+            # silhouette_score est en O(n²) (distances par paire) : sur un
+            # gros jeu de données, calculé sur un sous-échantillon plutôt que
+            # sur toutes les lignes -- c'est l'usage documenté de scikit-learn
+            # pour ce cas, la valeur reste représentative. Davies-Bouldin et
+            # Calinski-Harabasz n'ont pas ce problème (juste les centroïdes).
+            sample_size = MAX_SAMPLES_SILHOUETTE if n > MAX_SAMPLES_SILHOUETTE else None
+            silhouette = float(silhouette_score(X_scaled, labels, sample_size=sample_size, random_state=RANDOM_STATE))
             davies_bouldin = float(davies_bouldin_score(X_scaled, labels))
             calinski_harabasz = float(calinski_harabasz_score(X_scaled, labels))
         except ValueError:
@@ -657,7 +720,10 @@ def run_clustering(
         max_k = min(10, n - 1)
         if max_k >= 2:
             ks = list(range(1, max_k + 1))
-            inertias = [KMeans(n_clusters=kk, random_state=RANDOM_STATE, n_init=10).fit(X_scaled).inertia_ for kk in ks]
+            # n_init réduit à 3 (vs 10 pour le clustering final) : la courbe du
+            # coude n'a besoin que de la tendance générale, pas de l'optimum
+            # exact, et ce calcul refait déjà 10 fits (un par k testé).
+            inertias = [KMeans(n_clusters=kk, random_state=RANDOM_STATE, n_init=3).fit(X_scaled).inertia_ for kk in ks]
             elbow_fig = go.Figure(go.Scatter(x=ks, y=inertias, mode="lines+markers", marker_color=PALETTE[0]))
             elbow_fig.update_layout(title="Courbe du coude", xaxis_title="Nombre de clusters (k)", yaxis_title="Inertie")
             extra_figs["elbow_curve"] = elbow_fig

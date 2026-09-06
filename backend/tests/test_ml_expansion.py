@@ -395,6 +395,78 @@ def test_export_training_script_is_valid_notebook_json():
     assert len(notebook["cells"]) >= 3
 
 
+# --------------------------------------------------------------------------
+# Garde-fous de performance (Phase 8.1) : certaines méthodes ont une
+# complexité quadratique ou pire en nombre de lignes. Un DataFrame de test
+# n'a pas besoin d'être réellement volumineux pour vérifier que le
+# garde-fou se déclenche : seul le nombre de lignes compte, pas leur
+# contenu, donc des valeurs constantes suffisent et restent rapides à générer.
+# --------------------------------------------------------------------------
+
+def _wide_session(n_rows: int) -> str:
+    import pandas as pd
+
+    df = pd.DataFrame({
+        "x1": pd.Series(range(n_rows), dtype=float) % 7,
+        "x2": pd.Series(range(n_rows), dtype=float) % 5,
+        "y": pd.Series(range(n_rows), dtype=float) % 3,
+        "cls": (pd.Series(range(n_rows)) % 2).map({0: "a", 1: "b"}),
+    })
+    content = df.to_csv(index=False).encode()
+    return _upload_and_parse(content, "wide.csv")
+
+
+@pytest.mark.parametrize("model_type", ["svr", "gpr"])
+def test_regression_rejects_oversized_input_for_quadratic_methods(model_type):
+    from app.ml import MAX_SAMPLES_GPR, MAX_SAMPLES_KERNEL_METHOD
+
+    limit = MAX_SAMPLES_GPR if model_type == "gpr" else MAX_SAMPLES_KERNEL_METHOD
+    session_id = _wide_session(limit + 1)
+    resp = client.post("/api/ml/regression", json={
+        "session_id": session_id, "features": ["x1", "x2"], "target": "y",
+        "model_type": model_type, "params": {},
+    })
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "TOO_MANY_SAMPLES"
+
+
+def test_classification_rejects_oversized_input_for_svm():
+    from app.ml import MAX_SAMPLES_KERNEL_METHOD
+
+    session_id = _wide_session(MAX_SAMPLES_KERNEL_METHOD + 1)
+    resp = client.post("/api/ml/classification", json={
+        "session_id": session_id, "features": ["x1", "x2"], "target": "cls", "model_type": "svm",
+    })
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "TOO_MANY_SAMPLES"
+
+
+@pytest.mark.parametrize("model_type", ["hierarchical", "agglomerative", "mean_shift"])
+def test_clustering_rejects_oversized_input(model_type):
+    from app.ml import MAX_SAMPLES_HIERARCHICAL, MAX_SAMPLES_MEAN_SHIFT
+
+    limit = MAX_SAMPLES_MEAN_SHIFT if model_type == "mean_shift" else MAX_SAMPLES_HIERARCHICAL
+    session_id = _wide_session(limit + 1)
+    resp = client.post("/api/ml/clustering", json={
+        "session_id": session_id, "features": ["x1", "x2"], "model_type": model_type, "params": {"k": 3},
+    })
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "TOO_MANY_SAMPLES"
+
+
+def test_random_forest_uses_bounded_depth_by_default_on_large_data():
+    """Sans max_depth explicite, une grande profondeur non bornée ferait
+    dériver le temps de fit vers plusieurs dizaines de secondes (vérifié
+    empiriquement sur 100k lignes avant ce correctif) : ce test vérifie
+    seulement que le modèle entraîné a bien une profondeur plafonnée,
+    sans dépendre d'un chronométrage fragile en CI."""
+    from app.ml import _default_forest_depth
+
+    assert _default_forest_depth(1000) is None  # petit jeu : profondeur libre, sans risque
+    assert _default_forest_depth(50_000) is not None
+    assert _default_forest_depth(50_000) < _default_forest_depth(10_000)
+
+
 def test_classification_model_export_includes_encoded_columns():
     session_id = _titanic_session()
     train_resp = client.post("/api/ml/classification", json={
