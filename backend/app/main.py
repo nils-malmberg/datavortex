@@ -69,6 +69,7 @@ from app.parsing import (
 from app.pivot_service import run_pivot
 from app.plotting import build_1d_figure, build_2d_figure, build_3d_figure
 from app.plotting_service import build_advanced_figure
+from app.profile_service import detailed_profile
 from app.report import build_report
 from app.serialize import dataframe_to_records
 from app.session_store import Session, store
@@ -763,3 +764,16 @@ def pivot(body: PivotRequest) -> dict:
 def export_pivot(body: PivotExportRequest) -> Response:
     result = _run_pivot_for(body)
     return _table_response(result["table"], body.format, body.precision, "pivot")
+
+
+# --- Profilage détaillé (Phase 8) ----------------------------------------------
+
+@app.get("/api/profile/{session_id}/detailed")
+def get_detailed_profile(session_id: str) -> dict:
+    """Profil par colonne, score de qualité, doublons, anomalies et suggestions."""
+    session = _get_parsed_session_or_error(session_id)
+    result = detailed_profile(session.active_df())
+    result["session_id"] = session_id
+    result["filename"] = session.filename
+    result["filtered"] = session.filtered_df is not None
+    return result

@@ -216,3 +216,7 @@ export function exportPivot(sessionId, { index, columns, values, aggfunc, margin
     { responseType: 'blob' },
   )
 }
+
+export function getDetailedProfile(sessionId) {
+  return api.get(`/profile/${sessionId}/detailed`)
+}
