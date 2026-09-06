@@ -506,7 +506,7 @@ wheels = [
 
 [[package]]
 name = "datavortex"
-version = "1.0.0"
+version = "1.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "datavortex-backend" },
@@ -528,7 +528,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "datavortex-backend"
-version = "0.1.0"
+version = "1.0.1"
 source = { directory = "../backend" }
 dependencies = [
     { name = "chardet" },

@@ -1,6 +1,6 @@
 [project]
 name = "datavortex-backend"
-version = "1.0.0"
+version = "1.0.1"
 description = "DataVortex - Backend FastAPI pour visualisation et analyse de données"
 requires-python = ">=3.10"
 dependencies = [

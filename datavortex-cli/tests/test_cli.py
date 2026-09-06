@@ -12,7 +12,7 @@ from datavortex.config import get_default_port
 
 
 def test_version_string_matches_package():
-    assert __version__ == "1.0.0"
+    assert __version__ == "1.0.1"
 
 
 def test_version_flag_prints_version_and_exits(capsys):

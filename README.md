@@ -1,6 +1,6 @@
 # DataVortex
 
-**v1.0.0 — Production Ready ✅**
+**v1.0.1 — Production Ready ✅**
 
 DataVortex est une plateforme interactive de visualisation et d'analyse de données : importez un fichier CSV/Excel/JSON, explorez-le statistiquement, visualisez-le, filtrez-le et enrichissez-le, entraînez des modèles de machine learning, et exportez tout ça — données, graphiques, modèles ou rapport PDF complet — le tout depuis un navigateur, sans envoyer vos données où que ce soit hors de votre machine.
 

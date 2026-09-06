@@ -83,7 +83,7 @@ datavortex
 
 ```bash
 datavortex --version
-# datavortex 1.0.0
+# datavortex 1.0.1
 
 datavortex --help
 ```
