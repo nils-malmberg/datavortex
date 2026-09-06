@@ -68,6 +68,7 @@ from app.serialize import dataframe_to_records
 from app.session_store import Session, store
 from app.stats import column_summary, dataframe_summary
 from app.stats_service import advanced_stats, stats_export_table
+from app.table_service import read_rows
 
 MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024  # 100MB
 PREVIEW_ROWS = 100
@@ -667,4 +668,31 @@ def apply_advanced_filter_route(body: AdvancedFilterRequest) -> dict:
         invert=body.invert,
         preview_rows=body.preview_rows,
         preview_mode=body.preview_mode,
+    )
+
+
+# --- Lecture tabulaire paginée (Phase 8) --------------------------------------
+
+@app.get("/api/data/{session_id}/rows")
+def get_rows(
+    session_id: str,
+    offset: int = 0,
+    limit: int = 100,
+    sort_by: str | None = None,
+    sort_dir: str = "asc",
+    search: str = "",
+    search_column: str | None = None,
+    group_by: str | None = None,
+) -> dict:
+    """Tranche triée, recherchée et paginée du jeu de données courant."""
+    session = _get_parsed_session_or_error(session_id)
+    return read_rows(
+        session,
+        offset=offset,
+        limit=limit,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+        search=search,
+        search_column=search_column,
+        group_by=group_by,
     )

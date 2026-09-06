@@ -149,3 +149,21 @@ export function applyAdvancedFilter(sessionId, { filter, invert = false, preview
     preview_mode: previewMode,
   })
 }
+
+export function getRows(sessionId, { offset = 0, limit = 100, sortBy, sortDir = 'asc', search = '', searchColumn, groupBy } = {}) {
+  return api.get(`/data/${sessionId}/rows`, {
+    params: {
+      offset,
+      limit,
+      sort_by: sortBy || undefined,
+      sort_dir: sortDir,
+      search: search || '',
+      search_column: searchColumn || undefined,
+      group_by: groupBy || undefined,
+    },
+  })
+}
+
+export function getColumnStats(sessionId, column) {
+  return api.get(`/column/${sessionId}/${encodeURIComponent(column)}/stats`)
+}

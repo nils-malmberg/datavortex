@@ -54,7 +54,11 @@ export default function Dashboard({ parseResult, filename, onReset }) {
         </div>
       </div>
 
-      <DataPreview sessionId={sessionId} refreshKey={dataVersion} />
+      <DataPreview
+        sessionId={sessionId}
+        refreshKey={dataVersion}
+        onRequestFilter={() => setActiveTab('filters')}
+      />
 
       <div className="flex flex-col gap-4">
         <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800">
