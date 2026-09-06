@@ -1,0 +1,42 @@
+[project]
+name = "datavortex"
+version = "1.0.0"
+description = "Interactive data visualization and analysis platform"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "datavortex-backend",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==7.4.0",
+    "httpx==0.25.0",
+]
+
+[project.scripts]
+datavortex = "datavortex.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/nils-malmberg/datavortex"
+Repository = "https://github.com/nils-malmberg/datavortex"
+Issues = "https://github.com/nils-malmberg/datavortex/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["datavortex"]
+# datavortex/static/ (frontend pré-compilé, copié à l'étape de packaging, cf.
+# datavortex-cli/README.md) est ignoré par git mais doit tout de même finir
+# dans le wheel distribué : `artifacts` le force sans exiger sa présence pour
+# un simple `uv sync`/install éditable sur un checkout frais (backend seul).
+artifacts = ["datavortex/static/**"]
+
+[tool.uv.sources]
+datavortex-backend = { path = "../backend" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
