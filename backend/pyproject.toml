@@ -1,6 +1,6 @@
 [project]
 name = "datavortex-backend"
-version = "1.0.1"
+version = "1.0.2"
 description = "DataVortex - Backend FastAPI pour visualisation et analyse de données"
 requires-python = ">=3.10"
 dependencies = [
@@ -20,7 +20,13 @@ dependencies = [
     "jinja2==3.1.4",
     "skl2onnx==1.20.0",
     "onnx==1.16.1",
-    "tensorflow-cpu==2.15.0",
+    # tensorflow-cpu ne publie pas de wheel macOS ARM64 (Apple Silicon) —
+    # seul tensorflow-macos (fork officiel Apple) en fournit un, et à
+    # l'inverse il ne publie pas de wheel x86_64. D'où le partage par
+    # architecture plutôt qu'une seule ligne : les deux fournissent le même
+    # module `tensorflow`, donc aucun changement de code n'est nécessaire.
+    "tensorflow-cpu==2.15.0; sys_platform != 'darwin' or platform_machine != 'arm64'",
+    "tensorflow-macos==2.15.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 
 [project.optional-dependencies]

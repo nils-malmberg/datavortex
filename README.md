@@ -1,6 +1,6 @@
 # DataVortex
 
-**v1.0.1 — Production Ready ✅**
+**v1.0.2 — Production Ready ✅**
 
 DataVortex est une plateforme interactive de visualisation et d'analyse de données : importez un fichier CSV/Excel/JSON, explorez-le statistiquement, visualisez-le, filtrez-le et enrichissez-le, entraînez des modèles de machine learning, et exportez tout ça — données, graphiques, modèles ou rapport PDF complet — le tout depuis un navigateur, sans envoyer vos données où que ce soit hors de votre machine.
 
@@ -63,11 +63,12 @@ DataVortex est une plateforme interactive de visualisation et d'analyse de donn�
 
 > **DataVortex n'est pas publié sur PyPI** (le nom `datavortex` y est déjà pris par un paquet sans rapport) — l'installation se fait directement depuis ce dépôt Git, pas via `uv tool install datavortex` seul.
 
-### Linux / macOS
+### Avec Git installé
 
 ```bash
-# Installer uv (si nécessaire)
+# Installer uv (si nécessaire) — Linux/macOS :
 curl -LsSf https://astral.sh/uv/install.sh | sh
+# Windows (PowerShell) : irm https://astral.sh/uv/install.ps1 | iex
 
 # Installer DataVortex depuis ce dépôt
 uv tool install "git+https://github.com/nils-malmberg/datavortex.git#subdirectory=datavortex-cli"
@@ -77,20 +78,30 @@ datavortex
 # → ouvre http://127.0.0.1:8000
 ```
 
-### Windows (PowerShell)
+### Sans Git (poste pro sans droits d'installation)
 
-```powershell
-# Installer uv (si nécessaire)
-irm https://astral.sh/uv/install.ps1 | iex
+Aucun Git requis — un simple téléchargement suffit :
 
-# Installer DataVortex depuis ce dépôt
-uv tool install "git+https://github.com/nils-malmberg/datavortex.git#subdirectory=datavortex-cli"
+```bash
+curl -LsO https://github.com/nils-malmberg/datavortex/archive/refs/heads/main.zip
+unzip main.zip && cd datavortex-main
 
-# Lancer
+uv tool install ./datavortex-cli
 datavortex
 ```
 
-Voir [INSTALLATION.md](INSTALLATION.md) pour le détail par plateforme, le dépannage et la désinstallation.
+Windows (PowerShell, sans `curl`/`unzip`) :
+
+```powershell
+Invoke-WebRequest -Uri "https://github.com/nils-malmberg/datavortex/archive/refs/heads/main.zip" -OutFile main.zip
+Expand-Archive -Path main.zip -DestinationPath .
+cd datavortex-main
+
+uv tool install ./datavortex-cli
+datavortex
+```
+
+Voir [INSTALLATION.md](INSTALLATION.md) pour le détail par plateforme (dont **Apple Silicon**), le dépannage et la désinstallation.
 
 ## Démarrage rapide
 

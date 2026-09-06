@@ -4,6 +4,8 @@ DataVortex s'installe via [uv](https://docs.astral.sh/uv/), le gestionnaire de p
 
 > **Important** : DataVortex n'est pas publié sur PyPI — `uv tool install datavortex` (sans rien d'autre) installerait un paquet totalement différent : PyPI a déjà un paquet nommé `datavortex` publié par quelqu'un d'autre, sans rapport avec ce projet. Utilisez toujours l'URL Git complète ci-dessous, pas juste le nom.
 
+> **Pas de Git sur votre machine (poste professionnel restreint) ?** Aucune des commandes ci-dessous n'exige Git — chaque section propose aussi une variante « sans Git » basée sur un simple téléchargement de fichier ZIP. Sautez directement à la sous-section correspondante si c'est votre cas.
+
 ## Sommaire
 
 - [Linux](#linux)
@@ -38,6 +40,18 @@ L'application s'ouvre sur `http://127.0.0.1:8000`.
 
 > **Distributions avec `uv` en paquet snap/flatpak confiné** : si `uv tool install` échoue avec une erreur de permission sur `~/.local/share/uv`, préférez l'installateur officiel ci-dessus plutôt que le paquet de votre distribution.
 
+#### Sans Git
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh && source ~/.bashrc
+
+curl -LsO https://github.com/nils-malmberg/datavortex/archive/refs/heads/main.zip
+unzip main.zip && cd datavortex-main
+
+uv tool install ./datavortex-cli
+datavortex
+```
+
 ## macOS (Intel & Apple Silicon)
 
 ```bash
@@ -54,9 +68,21 @@ uv tool install "git+https://github.com/nils-malmberg/datavortex.git#subdirector
 datavortex
 ```
 
-Fonctionne nativement sur Apple Silicon (M1/M2/M3/M4) — aucune émulation Rosetta requise, toutes les dépendances (y compris TensorFlow) ont des builds ARM64.
+Fonctionne nativement sur Apple Silicon (M1/M2/M3/M4) comme sur Mac Intel, sans émulation Rosetta : `tensorflow-cpu` (utilisé par défaut) ne publie pas de wheel ARM64, `uv` sélectionne donc automatiquement `tensorflow-macos` (le fork officiel Apple, avec accélération Metal) à la place sur Apple Silicon — c'est transparent, vous n'avez rien à faire de spécial.
 
 > Si macOS bloque le premier lancement avec un avertissement Gatekeeper sur un binaire tiers installé par une dépendance, autorisez-le dans **Réglages Système → Confidentialité et sécurité**.
+
+#### Sans Git
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh && source ~/.zshrc
+
+curl -LsO https://github.com/nils-malmberg/datavortex/archive/refs/heads/main.zip
+unzip main.zip && cd datavortex-main
+
+uv tool install ./datavortex-cli
+datavortex
+```
 
 ## Windows (PowerShell)
 
@@ -77,13 +103,30 @@ datavortex
 
 > **Pare-feu Windows** : à la première exécution, Windows peut demander si `datavortex` (Python) est autorisé à écouter sur le réseau. Autorisez uniquement le **réseau privé** — DataVortex n'a besoin d'écouter que sur `127.0.0.1`, pas d'accepter des connexions entrantes depuis Internet.
 
+#### Sans Git (postes professionnels sans droits d'installation)
+
+`uv` s'installe dans le profil utilisateur (pas besoin de droits administrateur), et cette variante ne nécessite Git à aucune étape :
+
+```powershell
+irm https://astral.sh/uv/install.ps1 | iex
+
+Invoke-WebRequest -Uri "https://github.com/nils-malmberg/datavortex/archive/refs/heads/main.zip" -OutFile main.zip
+Expand-Archive -Path main.zip -DestinationPath .
+cd datavortex-main
+
+uv tool install ./datavortex-cli
+datavortex
+```
+
+Si votre service informatique bloque aussi `irm ... | iex` (téléchargement + exécution directe), téléchargez [l'installateur uv officiel](https://docs.astral.sh/uv/getting-started/installation/) séparément et lancez-le normalement — `uv` lui-même n'a besoin d'aucun droit particulier une fois installé.
+
 ---
 
 ## Vérifier l'installation
 
 ```bash
 datavortex --version
-# datavortex 1.0.1
+# datavortex 1.0.2
 
 datavortex --help
 ```
