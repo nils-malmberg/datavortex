@@ -5,6 +5,8 @@ export default function MergeDialog({ tabs, onClose, onCreated }) {
   const [selectedIds, setSelectedIds] = useState([])
   const [mode, setMode] = useState('concat')
   const [keyColumn, setKeyColumn] = useState('')
+  const [leftSuffix, setLeftSuffix] = useState('_x')
+  const [rightSuffix, setRightSuffix] = useState('_y')
   const [commonColumns, setCommonColumns] = useState([])
   const [isLoadingColumns, setIsLoadingColumns] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
@@ -53,9 +55,19 @@ export default function MergeDialog({ tabs, onClose, onCreated }) {
       setError('Choisissez une colonne clé commune pour le merge.')
       return
     }
+    if (mode === 'merge' && leftSuffix === rightSuffix) {
+      setError('Les deux suffixes doivent être différents.')
+      return
+    }
     setIsCreating(true)
     try {
-      const { data } = await mergeSessions(selectedIds, mode, mode === 'merge' ? keyColumn : undefined)
+      const { data } = await mergeSessions(
+        selectedIds,
+        mode,
+        mode === 'merge' ? keyColumn : undefined,
+        leftSuffix,
+        rightSuffix,
+      )
       onCreated({
         sessionId: data.new_session_id,
         filename: data.filename,
@@ -170,6 +182,35 @@ export default function MergeDialog({ tabs, onClose, onCreated }) {
               </select>
             )}
           </label>
+        )}
+
+        {mode === 'merge' && (
+          <div className="flex flex-wrap gap-4">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium text-slate-600 dark:text-slate-300">
+                Suffixe colonnes communes (gauche)
+              </span>
+              <input
+                type="text"
+                value={leftSuffix}
+                onChange={(e) => setLeftSuffix(e.target.value)}
+                placeholder="_x"
+                className="w-28 rounded-md border border-slate-300 px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium text-slate-600 dark:text-slate-300">
+                Suffixe colonnes communes (droite)
+              </span>
+              <input
+                type="text"
+                value={rightSuffix}
+                onChange={(e) => setRightSuffix(e.target.value)}
+                placeholder="_y"
+                className="w-28 rounded-md border border-slate-300 px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              />
+            </label>
+          </div>
         )}
 
         {error && (

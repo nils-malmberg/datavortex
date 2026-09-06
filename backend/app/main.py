@@ -226,6 +226,12 @@ def merge_sessions(body: MergeRequest) -> dict:
     else:
         if not body.key_column:
             raise AppError(400, "MISSING_KEY_COLUMN", "Une colonne clé est requise pour un merge.")
+        if body.left_suffix == body.right_suffix:
+            raise AppError(
+                400,
+                "INVALID_SUFFIXES",
+                "Les suffixes gauche et droite doivent être différents.",
+            )
         for session, df in zip(sessions, dfs):
             if body.key_column not in df.columns:
                 raise AppError(
@@ -236,7 +242,10 @@ def merge_sessions(body: MergeRequest) -> dict:
         merged = dfs[0]
         for df in dfs[1:]:
             try:
-                merged = pd.merge(merged, df, on=body.key_column, how="inner")
+                merged = pd.merge(
+                    merged, df, on=body.key_column, how="inner",
+                    suffixes=(body.left_suffix, body.right_suffix),
+                )
             except Exception as exc:
                 raise AppError(400, "MERGE_FAILED", f"Échec du merge : {exc}")
         if merged.shape[0] == 0:
@@ -516,3 +525,4 @@ def generate_report_pdf(body: GenerateReportRequest) -> Response:
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+

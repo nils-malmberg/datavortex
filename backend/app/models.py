@@ -141,3 +141,6 @@ class MergeRequest(BaseModel):
     session_ids: list[str]
     mode: Literal["concat", "merge"]
     key_column: Optional[str] = None
+    left_suffix: str = "_x"
+    right_suffix: str = "_y"
+

@@ -12,7 +12,18 @@ export default function UploadZone({ onUploaded, mergeableTabs, onOpenMergeDialo
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState(null)
+  const [mergeWarning, setMergeWarning] = useState(false)
   const inputRef = useRef(null)
+  const canMerge = (mergeableTabs?.length || 0) >= 2
+
+  const handleMergeClick = () => {
+    if (!canMerge) {
+      setMergeWarning(true)
+      return
+    }
+    setMergeWarning(false)
+    onOpenMergeDialog()
+  }
 
   const handleFile = useCallback(
     async (file) => {
@@ -97,18 +108,24 @@ export default function UploadZone({ onUploaded, mergeableTabs, onOpenMergeDialo
         </p>
       )}
 
-      {mergeableTabs && mergeableTabs.length >= 2 && (
+      {mergeableTabs && (
         <div className="w-full max-w-xl rounded-lg border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900">
           <p className="font-medium text-slate-600 dark:text-slate-300">Options avancées</p>
           <p className="mt-1 text-slate-500 dark:text-slate-400">
             Combiner des fichiers déjà ouverts dans d&apos;autres onglets.
           </p>
           <button
-            onClick={onOpenMergeDialog}
+            onClick={handleMergeClick}
             className="mt-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
           >
             Merge/Concat existing files
           </button>
+          {mergeWarning && (
+            <p className="mt-2 text-sm text-orange-600 dark:text-orange-400">
+              Ouvrez au moins 2 fichiers dans des onglets différents pour utiliser cette
+              fonctionnalité.
+            </p>
+          )}
         </div>
       )}
     </div>

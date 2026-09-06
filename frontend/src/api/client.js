@@ -89,8 +89,14 @@ export function generateReportPdf(
   )
 }
 
-export function mergeSessions(sessionIds, mode, keyColumn) {
-  return api.post('/merge', { session_ids: sessionIds, mode, key_column: keyColumn })
+export function mergeSessions(sessionIds, mode, keyColumn, leftSuffix = '_x', rightSuffix = '_y') {
+  return api.post('/merge', {
+    session_ids: sessionIds,
+    mode,
+    key_column: keyColumn,
+    left_suffix: leftSuffix,
+    right_suffix: rightSuffix,
+  })
 }
 
 export default api
