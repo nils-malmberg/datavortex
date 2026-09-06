@@ -82,6 +82,10 @@ class FilterCondition(BaseModel):
     column: str
     operator: str
     value: Optional[Any] = None
+    # Identifiant fourni par l'interface, renvoyé tel quel dans les indicateurs :
+    # il rattache chaque mesure à la bonne ligne du constructeur de filtre, même
+    # quand des conditions incomplètes sont écartées de la requête.
+    id: Optional[str] = None
 
 
 class FilterGroup(BaseModel):
@@ -264,3 +268,13 @@ class AdvancedPlotRequest(BaseModel):
     trend: TrendSpec = TrendSpec()
     overlays: OverlaySpec = OverlaySpec()
     style: StyleSpec = StyleSpec()
+
+
+# --- Filtres avancés (Phase 8) -------------------------------------------------
+
+class AdvancedFilterRequest(BaseModel):
+    session_id: str
+    filter: Optional[FilterNode] = None
+    invert: bool = False
+    preview_rows: int = 50
+    preview_mode: Literal["all", "kept", "removed"] = "all"

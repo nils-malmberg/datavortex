@@ -139,3 +139,13 @@ export function exportStatsTable(sessionId, { table, format, precision = 4 }) {
 export function plotAdvanced(sessionId, payload) {
   return api.post('/plot/advanced', { session_id: sessionId, ...payload })
 }
+
+export function applyAdvancedFilter(sessionId, { filter, invert = false, previewRows = 50, previewMode = 'all' }) {
+  return api.post('/filters/apply', {
+    session_id: sessionId,
+    filter,
+    invert,
+    preview_rows: previewRows,
+    preview_mode: previewMode,
+  })
+}

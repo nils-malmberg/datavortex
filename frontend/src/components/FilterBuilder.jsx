@@ -1,328 +1,430 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { applyFilter, getPreview } from '../api/client'
+import { applyAdvancedFilter, getPreview } from '../api/client'
+import FilterNodeView from './filter/FilterNode'
+import {
+  BUTTON_CLASS,
+  Badge,
+  ErrorBox,
+  INPUT_CLASS,
+  Loading,
+  PRIMARY_BUTTON_CLASS,
+  Panel,
+  Segmented,
+  Toggle,
+} from './ui/common'
+import {
+  buildFilterPayload,
+  countConditions,
+  describeFilter,
+  newCondition,
+  newGroup,
+  reassignIds,
+} from './filter/filterCatalog'
 
-const NUMERIC_TYPES = ['integer', 'float']
+const PRESET_KEY = 'datavortex_filter_presets'
+const HISTORY_LIMIT = 10
 
-const OPERATORS_BY_CATEGORY = {
-  numeric: [
-    { value: 'eq', label: '=' },
-    { value: 'ne', label: '≠' },
-    { value: 'gt', label: '>' },
-    { value: 'lt', label: '<' },
-    { value: 'gte', label: '≥' },
-    { value: 'lte', label: '≤' },
-    { value: 'between', label: 'entre' },
-    { value: 'in', label: 'dans la liste' },
-    { value: 'not_in', label: 'hors de la liste' },
-    { value: 'is_null', label: 'est vide' },
-    { value: 'is_not_null', label: "n'est pas vide" },
-  ],
-  string: [
-    { value: 'eq', label: 'égal à' },
-    { value: 'ne', label: 'différent de' },
-    { value: 'contains', label: 'contient' },
-    { value: 'starts_with', label: 'commence par' },
-    { value: 'ends_with', label: 'finit par' },
-    { value: 'regex', label: 'expression régulière' },
-    { value: 'in', label: 'dans la liste' },
-    { value: 'not_in', label: 'hors de la liste' },
-    { value: 'is_null', label: 'est vide' },
-    { value: 'is_not_null', label: "n'est pas vide" },
-  ],
-  boolean: [
-    { value: 'is_true', label: 'est vrai' },
-    { value: 'is_false', label: 'est faux' },
-    { value: 'is_null', label: 'est vide' },
-    { value: 'is_not_null', label: "n'est pas vide" },
-  ],
-  datetime: [
-    { value: 'eq', label: '=' },
-    { value: 'gt', label: 'après' },
-    { value: 'lt', label: 'avant' },
-    { value: 'between', label: 'entre' },
-    { value: 'year', label: 'année =' },
-    { value: 'month', label: 'mois =' },
-    { value: 'day', label: 'jour =' },
-    { value: 'is_null', label: 'est vide' },
-    { value: 'is_not_null', label: "n'est pas vide" },
-  ],
-}
+const PREVIEW_MODES = [
+  { value: 'all', label: 'Tout', hint: 'Aperçu du jeu complet, lignes retenues et écartées distinguées.' },
+  { value: 'kept', label: 'Retenues' },
+  { value: 'removed', label: 'Écartées' },
+]
 
-const NO_VALUE_OPS = new Set(['is_null', 'is_not_null', 'is_true', 'is_false'])
-const RANGE_OPS = new Set(['between'])
-const LIST_OPS = new Set(['in', 'not_in'])
-
-function categoryFor(colType) {
-  if (NUMERIC_TYPES.includes(colType)) return 'numeric'
-  if (colType === 'boolean') return 'boolean'
-  if (colType === 'datetime') return 'datetime'
-  return 'string'
-}
-
-let nextId = 1
-function newCondition(column) {
-  return { id: nextId++, column, operator: 'eq', value: '' }
-}
-
-function isConditionComplete(condition) {
-  if (NO_VALUE_OPS.has(condition.operator)) return true
-  if (RANGE_OPS.has(condition.operator)) {
-    const [lo, hi] = Array.isArray(condition.value) ? condition.value : []
-    return lo !== undefined && lo !== '' && hi !== undefined && hi !== ''
+function readPresets() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PRESET_KEY) || '[]')
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
   }
-  if (LIST_OPS.has(condition.operator)) {
-    return String(condition.value || '').trim() !== ''
+}
+
+function writePresets(presets) {
+  try {
+    window.localStorage.setItem(PRESET_KEY, JSON.stringify(presets))
+  } catch {
+    // Stockage indisponible : les presets ne survivront pas au rechargement.
   }
-  return condition.value !== '' && condition.value !== undefined && condition.value !== null
 }
 
-function buildPayload(logic, conditions, columnTypes) {
-  const built = conditions
-    .filter((c) => c.column && isConditionComplete(c))
-    .map((c) => {
-      const category = categoryFor(columnTypes[c.column])
-      let value = c.value
-      if (NO_VALUE_OPS.has(c.operator)) {
-        value = null
-      } else if (LIST_OPS.has(c.operator)) {
-        const items = String(value || '').split(',').map((v) => v.trim()).filter((v) => v !== '')
-        value = category === 'numeric' ? items.map(Number) : items
-      } else if (RANGE_OPS.has(c.operator)) {
-        const [lo, hi] = Array.isArray(value) ? value : ['', '']
-        value = category === 'numeric' ? [Number(lo), Number(hi)] : [lo, hi]
-      } else if (category === 'numeric') {
-        value = value === '' ? null : Number(value)
-      }
-      return { type: 'condition', column: c.column, operator: c.operator, value }
-    })
-
-  if (built.length === 0) return null
-  if (built.length === 1) return built[0]
-  return { type: 'group', logic, conditions: built }
+function formatCell(value) {
+  if (value === null || value === undefined) {
+    return <span className="italic text-slate-400 dark:text-slate-500">null</span>
+  }
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  return String(value)
 }
 
-function ConditionRow({ condition, columns, columnTypes, onChange, onRemove }) {
-  const category = categoryFor(columnTypes[condition.column])
-  const operators = OPERATORS_BY_CATEGORY[category] || OPERATORS_BY_CATEGORY.string
-  const isNumeric = category === 'numeric'
-  const inputType = isNumeric ? 'number' : 'text'
-
-  return (
-    <div className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800">
-      <select
-        value={condition.column}
-        onChange={(e) => {
-          const nextCategory = categoryFor(columnTypes[e.target.value])
-          const firstOp = (OPERATORS_BY_CATEGORY[nextCategory] || OPERATORS_BY_CATEGORY.string)[0].value
-          onChange({ ...condition, column: e.target.value, operator: firstOp, value: '' })
-        }}
-        className="rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-      >
-        {columns.map((c) => (
-          <option key={c} value={c}>
-            {c}
-          </option>
-        ))}
-      </select>
-
-      <select
-        value={condition.operator}
-        onChange={(e) => onChange({ ...condition, operator: e.target.value, value: '' })}
-        className="rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-      >
-        {operators.map((op) => (
-          <option key={op.value} value={op.value}>
-            {op.label}
-          </option>
-        ))}
-      </select>
-
-      {NO_VALUE_OPS.has(condition.operator) ? null : RANGE_OPS.has(condition.operator) ? (
-        <div className="flex items-center gap-1.5">
-          <input
-            type={inputType}
-            value={condition.value?.[0] ?? ''}
-            onChange={(e) => onChange({ ...condition, value: [e.target.value, condition.value?.[1] ?? ''] })}
-            placeholder="min"
-            className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-          />
-          <span className="text-sm text-slate-500 dark:text-slate-400">et</span>
-          <input
-            type={inputType}
-            value={condition.value?.[1] ?? ''}
-            onChange={(e) => onChange({ ...condition, value: [condition.value?.[0] ?? '', e.target.value] })}
-            placeholder="max"
-            className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-          />
-        </div>
-      ) : LIST_OPS.has(condition.operator) ? (
-        <input
-          type="text"
-          value={condition.value ?? ''}
-          onChange={(e) => onChange({ ...condition, value: e.target.value })}
-          placeholder="valeur1, valeur2, ..."
-          className="w-48 rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-        />
-      ) : (
-        <input
-          type={inputType}
-          value={condition.value ?? ''}
-          onChange={(e) => onChange({ ...condition, value: e.target.value })}
-          placeholder="valeur"
-          className="w-36 rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-        />
-      )}
-
-      <button
-        onClick={onRemove}
-        className="ml-auto rounded-md px-2 py-1 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
-        aria-label="Supprimer cette condition"
-      >
-        ✕
-      </button>
-    </div>
-  )
-}
-
+/**
+ * Constructeur de filtres (refonte Phase 8).
+ *
+ * Les conditions forment un arbre : chaque sous-groupe se comporte comme une
+ * parenthèse. Le panneau d'indicateurs montre en continu ce que le filtre
+ * conserve, et l'aperçu marque les lignes écartées avant de valider.
+ */
 export default function FilterBuilder({ sessionId, onFilterApplied }) {
-  const storageKey = `datavortex_filter_${sessionId}`
   const [columns, setColumns] = useState([])
   const [columnTypes, setColumnTypes] = useState({})
-  const [logic, setLogic] = useState('AND')
-  const [conditions, setConditions] = useState([])
+  const [root, setRoot] = useState(null)
+  const [invert, setInvert] = useState(false)
+  const [previewMode, setPreviewMode] = useState('all')
+
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [notice, setNotice] = useState(null)
+
+  const [presets, setPresets] = useState(readPresets)
+  const [presetName, setPresetName] = useState('')
+  const [history, setHistory] = useState([])
+  const [showPanel, setShowPanel] = useState(false)
   const hasRestored = useRef(false)
+
+  const storageKey = `datavortex_filter_${sessionId}`
 
   useEffect(() => {
     getPreview(sessionId).then(({ data }) => {
       setColumns(data.columns)
       setColumnTypes(data.column_types)
-      if (!hasRestored.current) {
-        hasRestored.current = true
-        try {
-          const saved = sessionStorage.getItem(storageKey)
-          if (saved) {
-            const parsed = JSON.parse(saved)
-            if (parsed.logic) setLogic(parsed.logic)
-            if (Array.isArray(parsed.conditions) && parsed.conditions.length > 0) {
-              setConditions(parsed.conditions.map((c) => ({ ...c, id: nextId++ })))
-            }
-          }
-        } catch {
-          // sessionStorage indisponible ou corrompu : on ignore silencieusement.
+      if (hasRestored.current) return
+      hasRestored.current = true
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null')
+        if (saved?.root) {
+          setRoot(reassignIds(saved.root))
+          setInvert(Boolean(saved.invert))
         }
+      } catch {
+        // Filtre sauvegardé illisible : on repart d'une sélection vide.
       }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
 
-  const addCondition = () => {
-    if (columns.length === 0) return
-    setConditions((prev) => [...prev, newCondition(columns[0])])
-  }
-
-  const updateCondition = (id, next) => {
-    setConditions((prev) => prev.map((c) => (c.id === id ? next : c)))
-  }
-
-  const removeCondition = (id) => {
-    setConditions((prev) => prev.filter((c) => c.id !== id))
-  }
-
-  const resetFilters = () => setConditions([])
-
-  const payload = useMemo(
-    () => buildPayload(logic, conditions, columnTypes),
-    [logic, conditions, columnTypes],
-  )
+  const payload = useMemo(() => buildFilterPayload(root, columnTypes), [root, columnTypes])
+  const payloadKey = JSON.stringify(payload)
 
   useEffect(() => {
-    if (columns.length === 0) return
+    if (columns.length === 0) return undefined
     try {
-      sessionStorage.setItem(storageKey, JSON.stringify({ logic, conditions }))
+      sessionStorage.setItem(storageKey, JSON.stringify({ root, invert }))
     } catch {
-      // stockage indisponible : pas bloquant pour la fonctionnalité.
+      // Sans stockage, le filtre est simplement perdu au changement d'onglet.
     }
 
     setIsLoading(true)
     setError(null)
     const timer = setTimeout(async () => {
       try {
-        const { data } = await applyFilter(sessionId, payload)
+        const { data } = await applyAdvancedFilter(sessionId, { filter: payload, invert, previewMode })
         setResult(data)
         onFilterApplied?.()
+        if (payload) {
+          setHistory((prev) => {
+            const label = describeFilter(payload)
+            const withoutDuplicate = prev.filter((h) => h.label !== label)
+            return [{ label, filter: payload, invert, at: Date.now() }, ...withoutDuplicate].slice(0, HISTORY_LIMIT)
+          })
+        }
       } catch (err) {
-        setError(
-          err?.response?.data?.error?.message ||
-            'Impossible d’appliquer ce filtre.',
-        )
+        setError(err?.response?.data?.error?.message || "Impossible d'appliquer ce filtre.")
       } finally {
         setIsLoading(false)
       }
     }, 400)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(payload), sessionId])
+  }, [payloadKey, invert, previewMode, sessionId, columns.length])
 
-  if (columns.length === 0) {
-    return <p className="p-4 text-sm text-slate-500 dark:text-slate-400">Chargement des colonnes…</p>
+  // Indexé par l'id de la condition, pas par sa position : une condition
+  // incomplète est absente de la requête et décalerait tous les chemins.
+  const insights = useMemo(() => {
+    const map = {}
+    for (const item of result?.per_condition || []) {
+      if (item.id) map[item.id] = item
+    }
+    return map
+  }, [result])
+
+  const flash = (message) => {
+    setNotice(message)
+    setTimeout(() => setNotice(null), 2500)
   }
+
+  const addCondition = () => {
+    if (columns.length === 0) return
+    setRoot((prev) =>
+      prev
+        ? { ...prev, conditions: [...prev.conditions, newCondition(columns[0])] }
+        : newGroup(columns[0]),
+    )
+  }
+
+  const addGroup = () => {
+    if (columns.length === 0) return
+    setRoot((prev) => {
+      const base = prev || { ...newGroup(columns[0]), conditions: [] }
+      return { ...base, conditions: [...base.conditions, newGroup(columns[0])] }
+    })
+  }
+
+  const resetAll = () => {
+    setRoot(null)
+    setInvert(false)
+  }
+
+  const savePreset = () => {
+    if (!presetName.trim() || !payload) return
+    const next = [...presets, { id: crypto.randomUUID(), name: presetName.trim(), root, invert }]
+    setPresets(next)
+    writePresets(next)
+    setPresetName('')
+    flash(`Filtre « ${presetName.trim()} » enregistré.`)
+  }
+
+  const loadPreset = (preset) => {
+    const missing = []
+    const check = (node) => {
+      if (!node) return
+      if (node.type === 'condition') {
+        if (!columns.includes(node.column)) missing.push(node.column)
+      } else {
+        node.conditions?.forEach(check)
+      }
+    }
+    check(preset.root)
+    setRoot(reassignIds(preset.root))
+    setInvert(Boolean(preset.invert))
+    flash(
+      missing.length > 0
+        ? `Filtre chargé, mais ces colonnes sont absentes : ${[...new Set(missing)].join(', ')}.`
+        : `Filtre « ${preset.name} » chargé.`,
+    )
+  }
+
+  const deletePreset = (id) => {
+    const next = presets.filter((p) => p.id !== id)
+    setPresets(next)
+    writePresets(next)
+  }
+
+  if (columns.length === 0) return <Loading>Chargement des colonnes…</Loading>
+
+  const conditionCount = countConditions(root)
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Combiner avec :</span>
-          <select
-            value={logic}
-            onChange={(e) => setLogic(e.target.value)}
-            disabled={conditions.length < 2}
-            className="rounded-md border border-slate-300 px-2 py-1 text-sm disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-          >
-            <option value="AND">ET (toutes les conditions)</option>
-            <option value="OR">OU (au moins une condition)</option>
-          </select>
-        </div>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          {result
-            ? `${result.total_rows} ligne(s) sélectionnée(s) sur ${result.total_rows_unfiltered} au total`
-            : `${conditions.length === 0 ? 'Aucun filtre actif' : ''}`}
+      {/* Indicateurs */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/60">
+        {result ? (
+          <>
+            <div className="flex min-w-[14rem] flex-1 flex-col gap-1">
+              <div className="flex items-baseline justify-between text-sm">
+                <span className="font-medium text-slate-700 dark:text-slate-200">
+                  {result.total_rows} / {result.total_rows_unfiltered} lignes conservées
+                </span>
+                <span className="tabular-nums text-slate-500 dark:text-slate-400">{result.kept_pct} %</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    result.kept_pct > 50 ? 'bg-emerald-500' : result.kept_pct > 10 ? 'bg-amber-500' : 'bg-red-500'
+                  }`}
+                  style={{ width: `${result.kept_pct}%` }}
+                />
+              </div>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {result.removed_rows} ligne(s) écartée(s) · {result.n_columns_affected} colonne(s) concernée(s)
+                {result.columns_affected.length > 0 && ` : ${result.columns_affected.join(', ')}`}
+              </span>
+            </div>
+            <Toggle
+              label="Mode exclusion"
+              checked={invert}
+              onChange={setInvert}
+              hint="Inverse la sélection : conserve exactement les lignes que le filtre écarterait."
+            />
+            {invert && <Badge tone="amber">sélection inversée</Badge>}
+            {isLoading && <span className="text-sm text-slate-400 dark:text-slate-500">Application…</span>}
+          </>
+        ) : (
+          <span className="text-sm text-slate-500 dark:text-slate-400">Aucun filtre actif.</span>
+        )}
+      </div>
+
+      {error && <ErrorBox>{error}</ErrorBox>}
+      {notice && (
+        <p className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+          {notice}
         </p>
-      </div>
+      )}
 
-      <div className="flex flex-col gap-2">
-        {conditions.map((condition) => (
-          <ConditionRow
-            key={condition.id}
-            condition={condition}
-            columns={columns}
-            columnTypes={columnTypes}
-            onChange={(next) => updateCondition(condition.id, next)}
-            onRemove={() => removeCondition(condition.id)}
-          />
-        ))}
-      </div>
+      {/* Conditions */}
+      {root ? (
+        <FilterNodeView
+          node={root}
+          columns={columns}
+          columnTypes={columnTypes}
+          insights={insights}
+          onChange={setRoot}
+          onRemove={resetAll}
+        />
+      ) : (
+        <p className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-400 dark:border-slate-700 dark:text-slate-500">
+          Aucune condition. Ajoutez-en une pour commencer à filtrer.
+        </p>
+      )}
 
-      <div className="flex gap-2">
-        <button
-          onClick={addCondition}
-          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-        >
-          + Ajouter une condition
+      <div className="flex flex-wrap gap-2">
+        <button onClick={addCondition} className={BUTTON_CLASS}>
+          + Condition
         </button>
-        <button
-          onClick={resetFilters}
-          disabled={conditions.length === 0}
-          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-        >
-          Réinitialiser
+        <button onClick={addGroup} className={BUTTON_CLASS}>
+          + Sous-groupe ( … )
         </button>
-        {isLoading && <span className="self-center text-sm text-slate-400 dark:text-slate-500">Application du filtre…</span>}
+        <button onClick={resetAll} disabled={!root} className={BUTTON_CLASS}>
+          Tout réinitialiser
+        </button>
+        <button onClick={() => setInvert((v) => !v)} disabled={!payload} className={BUTTON_CLASS}>
+          Inverser la sélection
+        </button>
+        <button onClick={() => setShowPanel((v) => !v)} className={showPanel ? PRIMARY_BUTTON_CLASS : BUTTON_CLASS}>
+          Filtres enregistrés
+        </button>
+        {conditionCount > 0 && <Badge tone="blue">{conditionCount} condition(s)</Badge>}
       </div>
 
-      {error && <p className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
+      {showPanel && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Panel className="flex flex-col gap-3">
+            <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Filtres enregistrés</h4>
+            <div className="flex gap-2">
+              <input
+                className={`${INPUT_CLASS} flex-1`}
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && savePreset()}
+                placeholder="Nom du filtre (ex. « setosa uniquement »)"
+              />
+              <button onClick={savePreset} disabled={!presetName.trim() || !payload} className={PRIMARY_BUTTON_CLASS}>
+                Enregistrer
+              </button>
+            </div>
+            {presets.length === 0 ? (
+              <p className="text-sm text-slate-400 dark:text-slate-500">Aucun filtre enregistré.</p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {presets.map((preset) => (
+                  <li
+                    key={preset.id}
+                    className="flex items-center gap-2 rounded-md border border-slate-200 px-2 py-1.5 dark:border-slate-700"
+                  >
+                    <span className="flex-1 truncate text-sm text-slate-700 dark:text-slate-200">{preset.name}</span>
+                    <button onClick={() => loadPreset(preset)} className={BUTTON_CLASS}>
+                      Charger
+                    </button>
+                    <button
+                      onClick={() => deletePreset(preset.id)}
+                      className="rounded px-1.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40"
+                      aria-label={`Supprimer ${preset.name}`}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+
+          <Panel className="flex flex-col gap-2">
+            <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              Historique récent ({history.length}/{HISTORY_LIMIT})
+            </h4>
+            {history.length === 0 ? (
+              <p className="text-sm text-slate-400 dark:text-slate-500">
+                Les filtres appliqués apparaîtront ici pour être rejoués.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {history.map((entry, i) => (
+                  <li key={i} className="flex items-center gap-2 text-sm">
+                    <span className="flex-1 truncate text-slate-600 dark:text-slate-300" title={entry.label}>
+                      {entry.label}
+                    </span>
+                    <button
+                      onClick={() => loadPreset({ name: entry.label, root: entry.filter, invert: entry.invert })}
+                      className={BUTTON_CLASS}
+                    >
+                      Rejouer
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+        </div>
+      )}
+
+      {/* Aperçu marqué */}
+      {result && (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Aperçu</h4>
+            <Segmented options={PREVIEW_MODES} value={previewMode} onChange={setPreviewMode} size="sm" />
+          </div>
+          {previewMode === 'all' && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Les lignes grisées et barrées seraient écartées par le filtre courant.
+            </p>
+          )}
+          <div className="max-h-80 overflow-auto rounded-lg border border-slate-200 dark:border-slate-800">
+            <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+              <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800">
+                <tr>
+                  {result.columns.map((col) => (
+                    <th
+                      key={col}
+                      className={`whitespace-nowrap px-3 py-2 text-left font-semibold ${
+                        result.columns_affected.includes(col)
+                          ? 'text-blue-700 dark:text-blue-300'
+                          : 'text-slate-700 dark:text-slate-200'
+                      }`}
+                      title={result.columns_affected.includes(col) ? 'Colonne utilisée par le filtre' : undefined}
+                    >
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
+                {result.rows.map((row, i) => {
+                  const matched = result.row_matches ? result.row_matches[i] : true
+                  return (
+                    <tr
+                      key={i}
+                      className={
+                        matched
+                          ? 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                          : 'bg-red-50/60 text-slate-400 line-through dark:bg-red-950/20 dark:text-slate-600'
+                      }
+                    >
+                      {result.columns.map((col) => (
+                        <td key={col} className="whitespace-nowrap px-3 py-1.5">
+                          {formatCell(row[col])}
+                        </td>
+                      ))}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {result.shown_rows} ligne(s) affichée(s)
+            {previewMode === 'all' && ` sur ${result.total_rows_unfiltered} au total`}
+          </p>
+        </div>
+      )}
     </div>
   )
 }

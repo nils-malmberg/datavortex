@@ -26,10 +26,12 @@ from app.errors import (
     session_not_found,
     unhandled_exception_handler,
 )
+from app.filter_service import apply_advanced_filter
 from app.filtering import evaluate_filter
 from app.formulas import evaluate_formula
 from app.ml import run_classification, run_clustering, run_dimensionality_reduction, run_regression
 from app.models import (
+    AdvancedFilterRequest,
     AdvancedPlotRequest,
     ApplyFilterRequest,
     ClassificationRequest,
@@ -650,3 +652,19 @@ def plot_advanced(body: AdvancedPlotRequest) -> dict:
         "trend": result["trend"],
         "palette": result["palette"],
     }
+
+
+# --- Filtres avancés (Phase 8) -------------------------------------------------
+
+@app.post("/api/filters/apply")
+def apply_advanced_filter_route(body: AdvancedFilterRequest) -> dict:
+    """Applique un filtre complexe et renvoie ses indicateurs : lignes retenues,
+    contribution de chaque condition, colonnes concernées et aperçu marqué."""
+    session = _get_parsed_session_or_error(body.session_id)
+    return apply_advanced_filter(
+        session,
+        body.filter,
+        invert=body.invert,
+        preview_rows=body.preview_rows,
+        preview_mode=body.preview_mode,
+    )
