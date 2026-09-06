@@ -126,7 +126,7 @@ Si votre service informatique bloque aussi `irm ... | iex` (téléchargement + e
 
 ```bash
 datavortex --version
-# datavortex 1.0.3
+# datavortex 1.0.4
 
 datavortex --help
 ```

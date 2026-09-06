@@ -3,18 +3,27 @@
 Contrairement au reste du module ML (scikit-learn), un vrai entraînement de
 réseau de neurones (couches configurables, optimiseur, courbes de perte par
 époque) demande un framework dédié : TensorFlow/Keras est utilisé tel quel,
-comme le suggère la spec. L'import est fait une fois au chargement du module
-(coût ~5s payé au démarrage du serveur, pas à chaque requête).
+comme le suggère la spec. TensorFlow n'est PAS importé au niveau du module :
+son import coûte de 5s (bon cas) à ~1min (machine lente/antivirus/premier
+lancement) selon la machine, et bloquait le démarrage du serveur pour tout
+le monde même sans utiliser cette fonctionnalité. Il est donc importé à la
+demande, seulement au premier entraînement de réseau de neurones (cf.
+`_tf()` ci-dessous) ; le résultat est mis en cache par Python après le
+premier appel, donc les entraînements suivants ne repaient pas ce coût.
 """
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-import tensorflow as tf
 from sklearn.metrics import accuracy_score, confusion_matrix, mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
+
+if TYPE_CHECKING:
+    import tensorflow as tf
 
 from app.errors import AppError
 from app.ml import PALETTE, _clean_subset, _encode_features, _permutation_feature_importance, _require_columns
@@ -24,7 +33,11 @@ MAX_LAYERS = 8
 MAX_UNITS = 512
 MIN_SAMPLES = 20
 
-tf.random.set_seed(RANDOM_STATE)
+
+def _tf():
+    """Importe TensorFlow au dernier moment (cf. note en tête de fichier)."""
+    import tensorflow as tf
+    return tf
 
 
 def _build_model(input_dim: int, layers: list[dict], output_units: int, output_activation: str, loss: str,
@@ -33,6 +46,7 @@ def _build_model(input_dim: int, layers: list[dict], output_units: int, output_a
     couche du modèle, pas un `StandardScaler` externe : le modèle exporté
     (TFLite compris) reste autonome, entrée brute -> sortie, sans dépendance
     à un objet scikit-learn séparé qui ne survivrait pas à la conversion."""
+    tf = _tf()
     model = tf.keras.Sequential(name="datavortex_mlp")
     model.add(tf.keras.layers.Input(shape=(input_dim,)))
     model.add(normalizer)
@@ -58,6 +72,7 @@ def _build_model(input_dim: int, layers: list[dict], output_units: int, output_a
 
 def _weights_payload(model: tf.keras.Model) -> list[dict]:
     """Poids/biais par couche dense, pour le diagramme de réseau côté frontend."""
+    tf = _tf()
     payload = []
     for layer in model.layers:
         if not isinstance(layer, tf.keras.layers.Dense):
@@ -87,6 +102,9 @@ def run_neural_network(
         raise AppError(400, "MISSING_LAYERS", "Au moins une couche cachée est requise.")
     if len(layers) > MAX_LAYERS:
         raise AppError(400, "TOO_MANY_LAYERS", f"Maximum {MAX_LAYERS} couches cachées.")
+
+    tf = _tf()
+    tf.random.set_seed(RANDOM_STATE)
 
     subset = _clean_subset(df, [*features, target])
     if len(subset) < MIN_SAMPLES:

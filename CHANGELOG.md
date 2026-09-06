@@ -2,6 +2,11 @@
 
 Toutes les phases de développement notables de DataVortex sont documentées ici, de la plus récente à la plus ancienne. Format inspiré de [Keep a Changelog](https://keepachangelog.com/), adapté au déroulé par phases de ce projet.
 
+## [1.0.4] — Démarrage rapide
+
+### Corrigé
+- Le démarrage de `datavortex` (bannière affichée, mais navigateur/API pas encore utilisables) pouvait prendre 30s à 1min : `app/ml_neural_service.py` importait `tensorflow` au niveau du module, donc à chaque lancement du serveur — même pour un utilisateur qui n'utilise jamais le constructeur de réseau de neurones. TensorFlow est maintenant importé à la demande, au premier entraînement de réseau de neurones seulement (mis en cache ensuite) : le démarrage du serveur ne dépend plus que de pandas/scikit-learn, nettement plus rapides à charger.
+
 ## [1.0.3] — Sélection automatique d'une version de Python compatible
 
 ### Corrigé
