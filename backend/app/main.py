@@ -18,6 +18,7 @@ import pandas as pd
 from fastapi import FastAPI, File, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.columns_service import apply_column_operation, apply_transform, describe_columns
 from app.errors import (
     AppError,
     app_error_handler,
@@ -37,6 +38,8 @@ from app.models import (
     ApplyFilterRequest,
     ClassificationRequest,
     ClusteringRequest,
+    ColumnOperationRequest,
+    ColumnTransformRequest,
     CreateColumnRequest,
     ExportCsvRequest,
     ExportPlotRequest,
@@ -792,3 +795,26 @@ def hypothesis_test(body: HypothesisTestRequest) -> dict:
     figure = result.pop("_figure", None)
     result["figure"] = _figure_to_response(figure) if figure is not None else None
     return result
+
+
+# --- Opérations sur les colonnes (Phase 8) -------------------------------------
+
+@app.get("/api/columns/{session_id}")
+def list_columns(session_id: str) -> dict:
+    """Inventaire des colonnes : type, complétude, cardinalité et échantillon."""
+    session = _get_parsed_session_or_error(session_id)
+    return describe_columns(session)
+
+
+@app.post("/api/columns/operation")
+def column_operation(body: ColumnOperationRequest) -> dict:
+    """Renomme, duplique, supprime ou réordonne des colonnes."""
+    session = _get_parsed_session_or_error(body.session_id)
+    return apply_column_operation(session, body.op, body.columns, body.new_name, body.order)
+
+
+@app.post("/api/columns/transform")
+def column_transform(body: ColumnTransformRequest) -> dict:
+    """Dérive une colonne : découpage en classes, encodage, décalage, fenêtre glissante."""
+    session = _get_parsed_session_or_error(body.session_id)
+    return apply_transform(session, body.transform, body.source, body.params, body.new_name, body.replace)

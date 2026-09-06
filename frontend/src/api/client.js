@@ -224,3 +224,30 @@ export function getDetailedProfile(sessionId) {
 export function runStatisticalTest(sessionId, payload) {
   return api.post('/stats/hypothesis_test', { session_id: sessionId, ...payload })
 }
+
+// --- Colonnes (Phase 8) --------------------------------------------------------
+
+export function listColumns(sessionId) {
+  return api.get(`/columns/${sessionId}`)
+}
+
+export function columnOperation(sessionId, { op, columns = [], newName, order }) {
+  return api.post('/columns/operation', {
+    session_id: sessionId,
+    op,
+    columns,
+    new_name: newName,
+    order,
+  })
+}
+
+export function transformColumn(sessionId, { transform, source, params, newName, replace = false }) {
+  return api.post('/columns/transform', {
+    session_id: sessionId,
+    transform,
+    source,
+    params,
+    new_name: newName,
+    replace,
+  })
+}

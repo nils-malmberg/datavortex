@@ -357,3 +357,22 @@ class HypothesisTestRequest(BaseModel):
     equal_variance: bool = False
     post_hoc: Literal["none", "tukey", "bonferroni"] = "tukey"
     distribution: Literal["norm", "expon", "uniform", "lognorm"] = "norm"
+
+
+# --- Opérations sur les colonnes (Phase 8) -------------------------------------
+
+class ColumnOperationRequest(BaseModel):
+    session_id: str
+    op: Literal["rename", "duplicate", "delete", "reorder"]
+    columns: list[str] = []
+    new_name: Optional[str] = None
+    order: Optional[list[str]] = None
+
+
+class ColumnTransformRequest(BaseModel):
+    session_id: str
+    transform: Literal["binning", "encoding", "lag", "rolling"]
+    source: str
+    params: dict = {}
+    new_name: Optional[str] = None
+    replace: bool = False

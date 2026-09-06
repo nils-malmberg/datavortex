@@ -3,7 +3,7 @@ import DataPreview from './DataPreview'
 import StatsPanel from './StatsPanel'
 import PlotBuilder from './PlotBuilder'
 import FilterBuilder from './FilterBuilder'
-import ColumnCreator from './ColumnCreator'
+import ColumnsPanel from './ColumnsPanel'
 import ExportData from './ExportData'
 import ReportBuilder from './ReportBuilder'
 import MLAnalysis from './MLAnalysis'
@@ -16,7 +16,7 @@ const TABS = [
   { value: 'stats', label: 'Stats' },
   { value: 'plots', label: 'Visualisations' },
   { value: 'filters', label: 'Filtres' },
-  { value: 'columns', label: 'Colonnes calculées' },
+  { value: 'columns', label: 'Colonnes' },
   { value: 'groupby', label: 'Groupby' },
   { value: 'pivot', label: 'Pivot' },
   { value: 'profile', label: 'Profil' },
@@ -97,7 +97,7 @@ export default function Dashboard({ parseResult, filename, onReset }) {
           <FilterBuilder sessionId={sessionId} onFilterApplied={bumpDataVersion} />
         )}
         {activeTab === 'columns' && (
-          <ColumnCreator sessionId={sessionId} onColumnCreated={bumpDataVersion} />
+          <ColumnsPanel sessionId={sessionId} onColumnsChanged={bumpDataVersion} />
         )}
         {activeTab === 'groupby' && <GroupByAnalysis sessionId={sessionId} refreshKey={dataVersion} />}
         {activeTab === 'pivot' && <PivotTableBuilder sessionId={sessionId} refreshKey={dataVersion} />}
