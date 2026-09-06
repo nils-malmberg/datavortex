@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { exportCsv, getRows } from '../api/client'
-import { extractFilename, triggerBlobDownload } from '../api/download'
+import { extractFilename } from '../api/download'
 import DataPreview from './DataPreview'
 import ReportBuilder from './ReportBuilder'
 import CommandPalette from './ui/CommandPalette'
@@ -8,6 +8,7 @@ import ShortcutsHelp from './ui/ShortcutsHelp'
 import useToast from './ui/ToastProvider'
 import useDarkMode from '../hooks/useDarkMode'
 import useKeyboardShortcuts from '../hooks/useKeyboardShortcuts'
+import useSaveFile from '../hooks/useSaveFile'
 import { BUTTON_CLASS, Loading, PRIMARY_BUTTON_CLASS } from './ui/common'
 
 /*
@@ -73,6 +74,7 @@ export default function Dashboard({ parseResult, filename, onReset, onInfoChange
   const [dragTab, setDragTab] = useState(null)
 
   const toast = useToast()
+  const saveFile = useSaveFile()
   const [isDark, toggleDark] = useDarkMode()
   const resizing = useRef(false)
 
@@ -140,12 +142,11 @@ export default function Dashboard({ parseResult, filename, onReset, onInfoChange
     try {
       const response = await exportCsv(sessionId)
       const name = extractFilename(response.headers['content-disposition'], 'data.csv')
-      triggerBlobDownload(response.data, name)
-      toast.success(`Export CSV téléchargé (${name}).`)
+      await saveFile(response.data, name)
     } catch {
       toast.error("L'export CSV a échoué.")
     }
-  }, [sessionId, toast])
+  }, [sessionId, toast, saveFile])
 
   const orderedTabs = useMemo(
     () => tabOrder.map((value) => TABS.find((t) => t.value === value)).filter(Boolean),

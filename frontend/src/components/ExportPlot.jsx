@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { exportPlot } from '../api/client'
-import { extractFilename, triggerBlobDownload } from '../api/download'
+import { extractFilename } from '../api/download'
+import useSaveFile from '../hooks/useSaveFile'
 
 const FORMATS = [
   { value: 'png', label: 'PNG' },
@@ -9,6 +10,7 @@ const FORMATS = [
 ]
 
 export default function ExportPlot({ sessionId, kind, params, disabled, compact, width, height }) {
+  const saveFile = useSaveFile()
   const [downloadingFormat, setDownloadingFormat] = useState(null)
   const [error, setError] = useState(null)
   const [open, setOpen] = useState(false)
@@ -33,7 +35,7 @@ export default function ExportPlot({ sessionId, kind, params, disabled, compact,
         response.headers['content-disposition'],
         `plot.${format}`,
       )
-      triggerBlobDownload(response.data, filename)
+      await saveFile(response.data, filename)
     } catch (err) {
       setError(
         "Impossible d'exporter le graphique dans ce format pour le moment.",

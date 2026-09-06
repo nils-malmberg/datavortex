@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { exportStatsTable, getAdvancedStats, getStats } from '../api/client'
-import { extractFilename, triggerBlobDownload } from '../api/download'
+import { extractFilename } from '../api/download'
+import useSaveFile from '../hooks/useSaveFile'
 import StatsSummaryTab from './stats/StatsSummaryTab'
 import StatsCorrelationsTab from './stats/StatsCorrelationsTab'
 import StatsDistributionsTab from './stats/StatsDistributionsTab'
@@ -42,6 +43,7 @@ const EXPORT_FORMATS = [
 ]
 
 export default function StatsPanel({ sessionId, refreshKey }) {
+  const saveFile = useSaveFile()
   const [tab, setTab] = useState('summary')
   const [advanced, setAdvanced] = useState(false)
   const [precision, setPrecision] = useState(3)
@@ -84,7 +86,7 @@ export default function StatsPanel({ sessionId, refreshKey }) {
     try {
       const response = await exportStatsTable(sessionId, { table: tab, format, precision })
       const filename = extractFilename(response.headers['content-disposition'], `stats_${tab}.${format}`)
-      triggerBlobDownload(response.data, filename)
+      await saveFile(response.data, filename)
     } catch (err) {
       // La réponse d'erreur arrive en blob (responseType), il faut la relire.
       let message = "Échec de l'export."

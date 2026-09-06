@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { generateReportPdf } from '../api/client'
-import { extractFilename, triggerBlobDownload } from '../api/download'
+import { extractFilename } from '../api/download'
+import useSaveFile from '../hooks/useSaveFile'
 
 const SECTIONS = [
   { value: 'summary', label: 'Résumé exécutif' },
@@ -12,6 +13,7 @@ const SECTIONS = [
 ]
 
 export default function ReportBuilder({ sessionId, savedPlots, onRemovePlot, onClose }) {
+  const saveFile = useSaveFile()
   const [selectedSections, setSelectedSections] = useState(SECTIONS.map((s) => s.value))
   const [selectedPlotIds, setSelectedPlotIds] = useState(savedPlots.map((p) => p.id))
   const [pageFormat, setPageFormat] = useState('A4')
@@ -45,7 +47,7 @@ export default function ReportBuilder({ sessionId, savedPlots, onRemovePlot, onC
         resizePlotsToFit,
       })
       const filename = extractFilename(response.headers['content-disposition'], 'rapport.pdf')
-      triggerBlobDownload(response.data, filename)
+      await saveFile(response.data, filename)
       onClose()
     } catch (err) {
       setError(

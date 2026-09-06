@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { exportCsv, getPreview } from '../api/client'
-import { extractFilename, triggerBlobDownload } from '../api/download'
+import { extractFilename } from '../api/download'
+import useSaveFile from '../hooks/useSaveFile'
 
 const SEPARATORS = [
   { value: ',', label: 'Virgule ( , )' },
@@ -15,6 +16,7 @@ const ENCODINGS = [
 ]
 
 export default function ExportData({ sessionId, refreshKey }) {
+  const saveFile = useSaveFile()
   const [separator, setSeparator] = useState(',')
   const [encoding, setEncoding] = useState('utf-8')
   const [includeFilterComment, setIncludeFilterComment] = useState(true)
@@ -42,7 +44,7 @@ export default function ExportData({ sessionId, refreshKey }) {
     try {
       const response = await exportCsv(sessionId, { separator, encoding, includeFilterComment })
       const filename = extractFilename(response.headers['content-disposition'], 'data.csv')
-      triggerBlobDownload(response.data, filename)
+      await saveFile(response.data, filename)
       setSuccessMessage(`Fichier "${filename}" téléchargé.`)
     } catch (err) {
       setError(

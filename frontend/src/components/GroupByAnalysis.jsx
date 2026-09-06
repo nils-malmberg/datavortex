@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { exportGroupBy, getPreview, runGroupBy } from '../api/client'
-import { extractFilename, triggerBlobDownload } from '../api/download'
+import { extractFilename } from '../api/download'
+import useSaveFile from '../hooks/useSaveFile'
 import PlotPreview from './PlotPreview'
 import ResultTable from './ui/ResultTable'
 import {
@@ -44,6 +45,7 @@ let nextId = 1
  * résultat ; le tableau et le graphique sont recalculés à la demande.
  */
 export default function GroupByAnalysis({ sessionId, refreshKey }) {
+  const saveFile = useSaveFile()
   const [columns, setColumns] = useState([])
   const [columnTypes, setColumnTypes] = useState({})
   const [groupBy, setGroupBy] = useState([])
@@ -121,7 +123,7 @@ export default function GroupByAnalysis({ sessionId, refreshKey }) {
     try {
       const response = await exportGroupBy(sessionId, { ...payload(), format, precision })
       const filename = extractFilename(response.headers['content-disposition'], `groupby.${format}`)
-      triggerBlobDownload(response.data, filename)
+      await saveFile(response.data, filename)
     } catch (err) {
       let message = "Échec de l'export."
       try {

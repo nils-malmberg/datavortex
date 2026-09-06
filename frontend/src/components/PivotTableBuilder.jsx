@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { exportPivot, getPreview, runPivot } from '../api/client'
-import { extractFilename, triggerBlobDownload } from '../api/download'
+import { extractFilename } from '../api/download'
+import useSaveFile from '../hooks/useSaveFile'
 import PlotPreview from './PlotPreview'
 import ResultTable from './ui/ResultTable'
 import {
@@ -46,6 +47,7 @@ const PERCENTAGE_MODES = [
  * La heatmap associée rend immédiatement lisible où se concentrent les valeurs.
  */
 export default function PivotTableBuilder({ sessionId, refreshKey }) {
+  const saveFile = useSaveFile()
   const [columns, setColumns] = useState([])
   const [columnTypes, setColumnTypes] = useState({})
 
@@ -107,7 +109,7 @@ export default function PivotTableBuilder({ sessionId, refreshKey }) {
     try {
       const response = await exportPivot(sessionId, { ...payload, format, precision })
       const filename = extractFilename(response.headers['content-disposition'], `pivot.${format}`)
-      triggerBlobDownload(response.data, filename)
+      await saveFile(response.data, filename)
     } catch (err) {
       let message = "Échec de l'export."
       try {
