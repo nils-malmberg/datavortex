@@ -7,7 +7,7 @@ import { useEffect } from 'react'
  * doivent rester disponibles partout (palette de commandes, aide) : sinon
  * taper « ? » dans une recherche ouvrirait l'aide au lieu d'écrire.
  */
-const ALWAYS_ACTIVE = new Set(['mod+k', 'escape'])
+const ALWAYS_ACTIVE = new Set(['mod+k', 'escape', 'f1', 'mod+h'])
 
 function isTypingTarget(target) {
   if (!target) return false
@@ -47,6 +47,8 @@ export const SHORTCUT_HELP = [
   { keys: 'Ctrl + E', description: 'Ouvrir le générateur de rapport PDF' },
   { keys: 'Ctrl + D', description: 'Basculer entre thème clair et sombre' },
   { keys: '1 … 9', description: "Aller directement à l'onglet correspondant" },
-  { keys: '?', description: 'Afficher cette aide' },
+  { keys: '?', description: 'Afficher les raccourcis clavier' },
+  { keys: 'F1', description: "Ouvrir l'aide complète" },
+  { keys: 'Ctrl + H', description: "Ouvrir l'aide complète" },
   { keys: 'Échap', description: 'Fermer la fenêtre ouverte' },
 ]
