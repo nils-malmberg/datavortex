@@ -30,6 +30,7 @@ from app.filtering import evaluate_filter
 from app.formulas import evaluate_formula
 from app.ml import run_classification, run_clustering, run_dimensionality_reduction, run_regression
 from app.models import (
+    AdvancedPlotRequest,
     ApplyFilterRequest,
     ClassificationRequest,
     ClusteringRequest,
@@ -59,6 +60,7 @@ from app.parsing import (
     parse_json,
 )
 from app.plotting import build_1d_figure, build_2d_figure, build_3d_figure
+from app.plotting_service import build_advanced_figure
 from app.report import build_report
 from app.serialize import dataframe_to_records
 from app.session_store import Session, store
@@ -431,6 +433,7 @@ _PLOT_BUILDERS = {
     "1d": (Plot1DRequest, build_1d_figure),
     "2d": (Plot2DRequest, build_2d_figure),
     "3d": (Plot3DRequest, build_3d_figure),
+    "advanced": (AdvancedPlotRequest, lambda df, params: build_advanced_figure(df, params)["figure"]),
 }
 
 
@@ -632,3 +635,18 @@ def export_stats_table(body: StatsExportRequest) -> Response:
     session = _get_parsed_session_or_error(body.session_id)
     table = stats_export_table(session.active_df(), body.table)
     return _table_response(table, body.format, body.precision, f"stats_{body.table}")
+
+
+# --- Visualisations avancées (Phase 8) ----------------------------------------
+
+@app.post("/api/plot/advanced")
+def plot_advanced(body: AdvancedPlotRequest) -> dict:
+    """Graphique enrichi : tendance + bande de confiance, repères statistiques,
+    palette adaptée à la vision des couleurs, annotations et nouveaux types."""
+    session = _get_parsed_session_or_error(body.session_id)
+    result = build_advanced_figure(session.active_df(), body)
+    return {
+        "figure": _figure_to_response(result["figure"]),
+        "trend": result["trend"],
+        "palette": result["palette"],
+    }

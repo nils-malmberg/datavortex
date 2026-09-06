@@ -68,7 +68,7 @@ class Plot3DRequest(BaseModel):
 
 class ExportPlotRequest(BaseModel):
     session_id: str
-    kind: Literal["1d", "2d", "3d", "ml"]
+    kind: Literal["1d", "2d", "3d", "ml", "advanced"]
     params: dict
     format: Literal["png", "svg", "html"]
     width: int = 900
@@ -121,7 +121,7 @@ ReportSection = Literal["summary", "stats", "preview", "plots", "correlations", 
 
 
 class ReportPlotSpec(BaseModel):
-    kind: Literal["1d", "2d", "3d", "ml"]
+    kind: Literal["1d", "2d", "3d", "ml", "advanced"]
     params: dict
     title: Optional[str] = None
 
@@ -190,3 +190,77 @@ class StatsExportRequest(BaseModel):
     table: Literal["summary", "correlations", "distributions", "missing"] = "summary"
     format: TableFormat = "csv"
     precision: int = 4
+
+
+# --- Visualisations avancées (Phase 8) ----------------------------------------
+
+AdvancedPlotType = Literal[
+    # types repris de la Phase 2, enrichis des options avancées
+    "scatter", "line", "bar_grouped", "bubble", "hexbin", "heatmap",
+    "histogram", "box", "violin", "kde", "bar", "pie",
+    "scatter3d", "surface",
+    # nouveaux types Phase 8
+    "violin_swarm", "ridge", "strip", "pair", "joint",
+]
+
+PaletteName = Literal["Default", "Viridis", "Plasma", "Inferno", "Cividis", "Twilight", "Okabe-Ito", "Tol Bright"]
+ColorblindMode = Literal["none", "safe", "deuteranopia", "protanopia", "tritanopia", "grayscale"]
+LegendPosition = Literal["top-right", "top-left", "bottom-right", "bottom-left", "top", "bottom", "none"]
+
+
+class TrendSpec(BaseModel):
+    type: Literal["none", "linear", "polynomial", "lowess"] = "none"
+    degree: int = 2
+    frac: float = 0.35  # fenêtre LOWESS, en proportion des points
+    confidence: Literal["none", "95", "99"] = "none"
+    show_equation: bool = True
+
+
+class OverlaySpec(BaseModel):
+    mean: bool = False
+    median: bool = False
+    std: bool = False
+    std_sigmas: int = 2
+    percentiles: list[float] = []
+
+
+class AnnotationSpec(BaseModel):
+    text: str
+    x: float
+    y: float
+    arrow: bool = True
+    size: int = 12
+
+
+class StyleSpec(BaseModel):
+    title: Optional[str] = None
+    subtitle: Optional[str] = None
+    x_label: Optional[str] = None
+    y_label: Optional[str] = None
+    palette: PaletteName = "Default"
+    colorblind_mode: ColorblindMode = "none"
+    grid: bool = True
+    legend_position: LegendPosition = "top-right"
+    x_scale: Literal["linear", "log"] = "linear"
+    y_scale: Literal["linear", "log"] = "linear"
+    theme: Literal["auto", "light", "dark"] = "auto"
+    width: int = 900
+    height: int = 600
+    dpi: int = 100
+    annotations: list[AnnotationSpec] = []
+
+
+class AdvancedPlotRequest(BaseModel):
+    session_id: str
+    plot_type: AdvancedPlotType = "scatter"
+    x: Optional[str] = None
+    y: Optional[str] = None
+    z: Optional[str] = None
+    color_by: Optional[str] = None
+    size_by: Optional[str] = None
+    group_by: Optional[str] = None
+    columns: Optional[list[str]] = None
+    bins: int = 30
+    trend: TrendSpec = TrendSpec()
+    overlays: OverlaySpec = OverlaySpec()
+    style: StyleSpec = StyleSpec()

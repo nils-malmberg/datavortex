@@ -29,7 +29,7 @@ export default function Dashboard({ parseResult, filename, onReset }) {
   const handleRemovePlotFromReport = (id) => setSavedPlots((prev) => prev.filter((p) => p.id !== id))
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-8 p-8">
+    <div className="mx-auto flex max-w-[1680px] flex-col gap-8 p-4 sm:p-6 xl:p-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-50">{filename}</h2>

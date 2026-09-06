@@ -1,102 +1,70 @@
-import { useEffect, useMemo, useState } from 'react'
-import { getPreview, plot1D, plot2D, plot3D } from '../api/client'
-import PlotPreview from './PlotPreview'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getPreview, plotAdvanced } from '../api/client'
+import ThemedPlot, { capturePlotThumbnail } from './ui/ThemedPlot'
 import ExportPlot from './ExportPlot'
-
-function describePlot(params) {
-  const type = params.plot_type
-  if (params.column) return `${type} — ${params.column}`
-  if (params.x && params.y) return `${type} — ${params.y} vs ${params.x}`
-  if (params.x) return `${type} — ${params.x}`
-  return type
-}
+import PlotSidebar from './plot/PlotSidebar'
+import PlotStylePanel from './plot/PlotStylePanel'
+import PlotGallery from './plot/PlotGallery'
+import { BUTTON_CLASS, Badge, ErrorBox, Loading, PRIMARY_BUTTON_CLASS } from './ui/common'
+import {
+  DEFAULT_SPEC,
+  buildPayload,
+  describeSpec,
+  isSpecComplete,
+  plotConfig,
+} from './plot/plotCatalog'
 
 const NUMERIC_TYPES = ['integer', 'float']
 const CATEGORICAL_TYPES = ['string', 'boolean']
+const PRESET_STORAGE_KEY = 'datavortex_plot_presets'
+const MAX_HISTORY = 40
 
-const CATEGORIES = [
-  { value: '1d', label: '1D (univarié)' },
-  { value: '2d', label: '2D (bivarié)' },
-  { value: '3d', label: '3D (trivarié)' },
-]
-
-const PLOT_TYPES = {
-  '1d': [
-    { value: 'histogram', label: 'Histogramme', fields: ['column', 'group_by', 'bins'], required: ['column'] },
-    { value: 'box', label: 'Box plot', fields: ['column', 'group_by'], required: ['column'] },
-    { value: 'violin', label: 'Violin plot', fields: ['column', 'group_by'], required: ['column'] },
-    { value: 'kde', label: 'Densité (KDE)', fields: ['column'], required: ['column'] },
-    { value: 'bar', label: 'Bar chart (catégories)', fields: ['column'], required: ['column'] },
-    { value: 'pie', label: 'Pie chart', fields: ['column'], required: ['column'] },
-  ],
-  '2d': [
-    { value: 'scatter', label: 'Scatter plot', fields: ['x', 'y', 'color_by', 'size_by'], required: ['x', 'y'] },
-    { value: 'line', label: 'Line chart', fields: ['x', 'y', 'color_by'], required: ['x', 'y'] },
-    { value: 'bar_grouped', label: 'Bar chart groupé', fields: ['x', 'y', 'color_by'], required: ['x', 'y', 'color_by'] },
-    { value: 'bubble', label: 'Bubble chart', fields: ['x', 'y', 'size_by', 'color_by'], required: ['x', 'y', 'size_by'] },
-    { value: 'heatmap', label: 'Heatmap (corrélations)', fields: ['columns'], required: [] },
-    { value: 'hexbin', label: 'Hexbin (densité 2D)', fields: ['x', 'y', 'bins'], required: ['x', 'y'] },
-  ],
-  '3d': [
-    { value: 'scatter3d', label: 'Scatter 3D', fields: ['x', 'y', 'z', 'color_by'], required: ['x', 'y', 'z'] },
-    { value: 'surface', label: 'Surface plot', fields: ['x', 'y', 'z'], required: ['x', 'y', 'z'] },
-  ],
+function loadPresets() {
+  try {
+    const raw = window.localStorage.getItem(PRESET_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    // Stockage indisponible ou corrompu : on repart d'une liste vide.
+    return []
+  }
 }
 
-const NUMERIC_ONLY_FIELDS = {
-  x: ['scatter', 'hexbin', 'bubble', 'scatter3d', 'surface'],
-  y: ['scatter', 'hexbin', 'bubble', 'scatter3d', 'surface', 'line'],
-  z: ['scatter3d', 'surface'],
+function savePresets(presets) {
+  try {
+    window.localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(presets))
+  } catch {
+    // Le preset ne survivra pas au rechargement, sans conséquence fonctionnelle.
+  }
 }
 
-const FIELD_LABELS = {
-  column: 'Colonne',
-  group_by: 'Grouper par (optionnel)',
-  x: 'Axe X',
-  y: 'Axe Y',
-  z: 'Axe Z',
-  color_by: 'Couleur par (optionnel)',
-  size_by: 'Taille par',
-  columns: 'Colonnes incluses',
-  bins: 'Nombre de bins',
-}
-
-function columnFilterFor(field, plotType) {
-  if (field === 'size_by' || field === 'columns') return 'numeric'
-  if (field === 'group_by') return 'categorical'
-  if (NUMERIC_ONLY_FIELDS[field]?.includes(plotType)) return 'numeric'
-  return 'any'
-}
-
-const DEFAULT_PARAMS = {
-  column: '', group_by: '', x: '', y: '', z: '',
-  color_by: '', size_by: '', columns: [], bins: 20, title: '',
-}
-
-// Champs dont la valeur doit toujours pointer vers une colonne réelle (pas de
-// valeur vide) : un <select> contrôlé sans option "" désélectionne l'état
-// React alors que le navigateur affiche quand même une colonne par défaut,
-// ce qui désynchronise l'UI (colonne visible) de l'état (toujours vide) et
-// bloque silencieusement la génération du graphique.
-const REQUIRE_REAL_VALUE = ['column', 'x', 'y', 'z']
-
+/**
+ * Atelier de visualisation (refonte Phase 8).
+ *
+ * Trois zones : le choix des données à gauche, un grand aperçu au centre, et
+ * les options avancées repliables à droite. L'historique des configurations
+ * permet de revenir en arrière après une exploration.
+ */
 export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
   const [columns, setColumns] = useState([])
   const [columnTypes, setColumnTypes] = useState({})
-  const [category, setCategory] = useState('2d')
-  const [plotType, setPlotType] = useState('scatter')
-  const [params, setParams] = useState(DEFAULT_PARAMS)
+
+  const [spec, setSpecState] = useState(DEFAULT_SPEC)
+  const [history, setHistory] = useState([DEFAULT_SPEC])
+  const [historyIndex, setHistoryIndex] = useState(0)
+
   const [figure, setFigure] = useState(null)
-  const [lastSpec, setLastSpec] = useState(null)
+  const [trendStats, setTrendStats] = useState(null)
+  const [lastPayload, setLastPayload] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [notice, setNotice] = useState(null)
 
-  useEffect(() => {
-    getPreview(sessionId).then(({ data }) => {
-      setColumns(data.columns)
-      setColumnTypes(data.column_types)
-    })
-  }, [sessionId, refreshKey])
+  const [panelCollapsed, setPanelCollapsed] = useState(false)
+  const [showManagement, setShowManagement] = useState(false)
+  const [presets, setPresets] = useState(loadPresets)
+  const [gallery, setGallery] = useState([])
+  const graphDiv = useRef(null)
 
   const numericColumns = useMemo(
     () => columns.filter((c) => NUMERIC_TYPES.includes(columnTypes[c])),
@@ -107,313 +75,297 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
     [columns, columnTypes],
   )
 
-  const columnOptionsFor = (filterType) => {
-    if (filterType === 'numeric') return numericColumns
-    if (filterType === 'categorical') return categoricalColumns
-    return columns
+  // L'index courant est lu dans un setState : une ref évite de recréer setSpec.
+  const historyIndexRef = useRef(0)
+  useEffect(() => {
+    historyIndexRef.current = historyIndex
+  }, [historyIndex])
+
+  /** Applique une nouvelle configuration et l'empile dans l'historique. */
+  const setSpec = useCallback((next) => {
+    setSpecState(next)
+    setHistory((prev) => {
+      const truncated = prev.slice(0, historyIndexRef.current + 1)
+      const appended = [...truncated, next].slice(-MAX_HISTORY)
+      historyIndexRef.current = appended.length - 1
+      setHistoryIndex(appended.length - 1)
+      return appended
+    })
+  }, [])
+
+  const undo = () => {
+    if (historyIndex <= 0) return
+    const index = historyIndex - 1
+    setHistoryIndex(index)
+    historyIndexRef.current = index
+    setSpecState(history[index])
   }
 
-  const activeConfig = PLOT_TYPES[category].find((t) => t.value === plotType)
+  const redo = () => {
+    if (historyIndex >= history.length - 1) return
+    const index = historyIndex + 1
+    setHistoryIndex(index)
+    historyIndexRef.current = index
+    setSpecState(history[index])
+  }
 
-  // Calcule des valeurs par défaut valides pour les champs "column"/"x"/"y"/"z"
-  // du type de graphique donné, en conservant la valeur actuelle si elle est
-  // toujours compatible, sinon en choisissant la première colonne compatible.
-  const deriveParams = (targetCategory, targetPlotType, prevParams) => {
-    const config = PLOT_TYPES[targetCategory].find((t) => t.value === targetPlotType)
-    const next = { ...prevParams }
-    for (const field of REQUIRE_REAL_VALUE) {
-      if (!config.fields.includes(field)) continue
-      const filterType = columnFilterFor(field, targetPlotType)
-      const options = columnOptionsFor(filterType)
-      next[field] = options.includes(prevParams[field]) ? prevParams[field] : (options[0] || '')
-    }
-    // Évite un scatter/line dégénéré avec x === y quand plusieurs colonnes existent.
-    if (config.fields.includes('x') && config.fields.includes('y') && next.x && next.x === next.y) {
-      const alt = columnOptionsFor(columnFilterFor('y', targetPlotType)).find((c) => c !== next.x)
-      if (alt) next.y = alt
-    }
-    // Pour le 3D, essaie d'avoir x/y/z distincts quand assez de colonnes existent.
-    if (config.fields.includes('z')) {
-      const optionsZ = columnOptionsFor(columnFilterFor('z', targetPlotType))
-      if (!next.z || next.z === next.x || next.z === next.y) {
-        next.z = optionsZ.find((c) => c !== next.x && c !== next.y) || next.z || optionsZ[0] || ''
+  // --- Chargement des colonnes et valeurs par défaut cohérentes -------------
+  useEffect(() => {
+    getPreview(sessionId).then(({ data }) => {
+      setColumns(data.columns)
+      setColumnTypes(data.column_types)
+      const numeric = data.columns.filter((c) => NUMERIC_TYPES.includes(data.column_types[c]))
+      const categorical = data.columns.filter((c) => CATEGORICAL_TYPES.includes(data.column_types[c]))
+      const initial = {
+        ...DEFAULT_SPEC,
+        x: numeric[0] || data.columns[0] || '',
+        y: numeric[1] || numeric[0] || '',
+        group_by: categorical[0] || '',
       }
-    }
-    return next
-  }
+      setSpecState(initial)
+      setHistory([initial])
+      setHistoryIndex(0)
+      historyIndexRef.current = 0
+    })
+  }, [sessionId, refreshKey])
 
+  // --- Génération du graphique (débouncée) ---------------------------------
   useEffect(() => {
     if (columns.length === 0) return
-    setParams((prev) => deriveParams(category, plotType, prev))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns])
-
-  const updateParam = (key, value) => setParams((prev) => ({ ...prev, [key]: value }))
-
-  const handleCategoryChange = (newCategory) => {
-    const firstType = PLOT_TYPES[newCategory][0].value
-    setCategory(newCategory)
-    setPlotType(firstType)
-    setParams((prev) => deriveParams(newCategory, firstType, prev))
-  }
-
-  const handlePlotTypeChange = (newPlotType) => {
-    setPlotType(newPlotType)
-    setParams((prev) => deriveParams(category, newPlotType, prev))
-  }
-
-  const toggleHeatmapColumn = (col) => {
-    setParams((prev) => {
-      const current = prev.columns || []
-      const next = current.includes(col) ? current.filter((c) => c !== col) : [...current, col]
-      return { ...prev, columns: next }
-    })
-  }
-
-  useEffect(() => {
-    if (!activeConfig) return
-    const missingRequired = activeConfig.required.some((f) => {
-      const v = params[f]
-      return v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)
-    })
-    if (missingRequired) {
+    if (!isSpecComplete(spec)) {
       setFigure(null)
       setError(null)
       return
     }
-
-    const payload = { plot_type: plotType }
-    for (const field of activeConfig.fields) {
-      const value = params[field]
-      const isEmpty = value === '' || value === undefined || (Array.isArray(value) && value.length === 0)
-      if (!isEmpty) payload[field] = value
-    }
-    if (params.title) payload.title = params.title
-
+    const payload = buildPayload(spec)
     setIsLoading(true)
     setError(null)
     const timer = setTimeout(async () => {
       try {
-        let response
-        if (category === '1d') response = await plot1D(sessionId, payload)
-        else if (category === '2d') response = await plot2D(sessionId, payload)
-        else response = await plot3D(sessionId, payload)
-        setFigure(response.data.figure)
-        setLastSpec({ kind: category, params: payload })
+        const { data } = await plotAdvanced(sessionId, payload)
+        setFigure(data.figure)
+        setTrendStats(data.trend)
+        setLastPayload(payload)
       } catch (err) {
-        setError(
-          err?.response?.data?.error?.message ||
-            'Impossible de générer ce graphique avec ces paramètres.',
-        )
+        setError(err?.response?.data?.error?.message || 'Impossible de générer ce graphique.')
         setFigure(null)
+        setTrendStats(null)
       } finally {
         setIsLoading(false)
       }
     }, 400)
-
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, plotType, JSON.stringify(params), sessionId, refreshKey])
+  }, [JSON.stringify(spec), sessionId, refreshKey, columns.length])
 
-  if (columns.length === 0) {
-    return <p className="p-4 text-sm text-slate-500 dark:text-slate-400">Chargement des colonnes…</p>
+  const flash = (message) => {
+    setNotice(message)
+    setTimeout(() => setNotice(null), 2500)
   }
 
+  // --- Presets --------------------------------------------------------------
+  const handleSavePreset = (name) => {
+    const next = [...presets, { id: crypto.randomUUID(), name, spec, createdAt: Date.now() }]
+    setPresets(next)
+    savePresets(next)
+    flash(`Preset « ${name} » enregistré.`)
+  }
+
+  const handleLoadPreset = (preset) => {
+    const missing = ['x', 'y', 'z', 'color_by', 'size_by', 'group_by']
+      .map((field) => preset.spec[field])
+      .filter((value) => value && !columns.includes(value))
+    setSpec({ ...DEFAULT_SPEC, ...preset.spec })
+    if (missing.length > 0) {
+      flash(`Preset chargé, mais ces colonnes sont absentes du fichier : ${[...new Set(missing)].join(', ')}.`)
+    } else {
+      flash(`Preset « ${preset.name} » chargé.`)
+    }
+  }
+
+  const handleDeletePreset = (id) => {
+    const next = presets.filter((p) => p.id !== id)
+    setPresets(next)
+    savePresets(next)
+  }
+
+  // --- Galerie --------------------------------------------------------------
+  const captureCurrent = async () => {
+    try {
+      const thumbnail = await capturePlotThumbnail(graphDiv.current)
+      setGallery((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), label: describeSpec(spec), thumbnail, spec },
+      ])
+      flash('Graphique ajouté à la galerie.')
+    } catch {
+      flash('Impossible de capturer ce graphique.')
+    }
+  }
+
+  // --- Partage --------------------------------------------------------------
+  const shareConfig = async () => {
+    const text = JSON.stringify({ datavortex_plot: spec }, null, 2)
+    try {
+      await navigator.clipboard.writeText(text)
+      flash('Configuration copiée dans le presse-papier — collez-la pour la réutiliser.')
+    } catch {
+      flash("Le presse-papier n'est pas accessible dans ce contexte.")
+    }
+  }
+
+  const importConfig = async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      const parsed = JSON.parse(text)
+      if (!parsed?.datavortex_plot) {
+        flash('Le presse-papier ne contient pas une configuration DataVortex.')
+        return
+      }
+      setSpec({ ...DEFAULT_SPEC, ...parsed.datavortex_plot })
+      flash('Configuration importée.')
+    } catch {
+      flash('Impossible de lire une configuration valide depuis le presse-papier.')
+    }
+  }
+
+  if (columns.length === 0) return <Loading>Chargement des colonnes…</Loading>
+
+  const config = plotConfig(spec.plot_type)
+  const missingFields = config.required.filter((f) => {
+    const v = spec[f]
+    return v === '' || v === undefined || v === null || (Array.isArray(v) && v.length === 0)
+  })
+
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-wrap gap-2">
-          {CATEGORIES.map((c) => (
-            <button
-              key={c.value}
-              onClick={() => handleCategoryChange(c.value)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                category === c.value
-                  ? 'bg-blue-600 text-white dark:bg-blue-500'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-              }`}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-end gap-4">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-slate-600 dark:text-slate-300">Type de graphique</span>
-            <select
-              value={plotType}
-              onChange={(e) => handlePlotTypeChange(e.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-            >
-              {PLOT_TYPES[category].map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {activeConfig.fields.includes('column') && (
-            <FieldSelect
-              label={FIELD_LABELS.column}
-              value={params.column}
-              onChange={(v) => updateParam('column', v)}
-              options={columnOptionsFor(columnFilterFor('column', plotType))}
-            />
-          )}
-          {activeConfig.fields.includes('x') && (
-            <FieldSelect
-              label={FIELD_LABELS.x}
-              value={params.x}
-              onChange={(v) => updateParam('x', v)}
-              options={columnOptionsFor(columnFilterFor('x', plotType))}
-            />
-          )}
-          {activeConfig.fields.includes('y') && (
-            <FieldSelect
-              label={FIELD_LABELS.y}
-              value={params.y}
-              onChange={(v) => updateParam('y', v)}
-              options={columnOptionsFor(columnFilterFor('y', plotType))}
-            />
-          )}
-          {activeConfig.fields.includes('z') && (
-            <FieldSelect
-              label={FIELD_LABELS.z}
-              value={params.z}
-              onChange={(v) => updateParam('z', v)}
-              options={columnOptionsFor(columnFilterFor('z', plotType))}
-            />
-          )}
-          {activeConfig.fields.includes('group_by') && (
-            <FieldSelect
-              label={FIELD_LABELS.group_by}
-              value={params.group_by}
-              onChange={(v) => updateParam('group_by', v)}
-              options={columnOptionsFor('categorical')}
-              allowEmpty
-            />
-          )}
-          {activeConfig.fields.includes('color_by') && (
-            <FieldSelect
-              label={FIELD_LABELS.color_by}
-              value={params.color_by}
-              onChange={(v) => updateParam('color_by', v)}
-              options={columnOptionsFor(columnFilterFor('color_by', plotType))}
-              allowEmpty={!activeConfig.required.includes('color_by')}
-            />
-          )}
-          {activeConfig.fields.includes('size_by') && (
-            <FieldSelect
-              label={FIELD_LABELS.size_by}
-              value={params.size_by}
-              onChange={(v) => updateParam('size_by', v)}
-              options={columnOptionsFor('numeric')}
-              allowEmpty={!activeConfig.required.includes('size_by')}
-            />
-          )}
-          {activeConfig.fields.includes('bins') && (
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-slate-600 dark:text-slate-300">{FIELD_LABELS.bins}</span>
-              <input
-                type="number"
-                min={2}
-                max={200}
-                value={params.bins}
-                onChange={(e) => updateParam('bins', Number(e.target.value))}
-                className="w-24 rounded-md border border-slate-300 px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-              />
-            </label>
-          )}
-
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-slate-600 dark:text-slate-300">Titre (optionnel)</span>
-            <input
-              type="text"
-              value={params.title}
-              onChange={(e) => updateParam('title', e.target.value)}
-              placeholder="Titre personnalisé"
-              className="rounded-md border border-slate-300 px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-            />
-          </label>
-        </div>
-
-        {activeConfig.fields.includes('columns') && (
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-              {FIELD_LABELS.columns} (par défaut : toutes les colonnes numériques)
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {numericColumns.map((col) => (
-                <label
-                  key={col}
-                  className={`cursor-pointer rounded-md border px-2.5 py-1 text-xs font-medium ${
-                    params.columns.includes(col)
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-950/40 dark:text-blue-300'
-                      : 'border-slate-300 bg-white text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    className="hidden"
-                    checked={params.columns.includes(col)}
-                    onChange={() => toggleHeatmapColumn(col)}
-                  />
-                  {col}
-                </label>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <PlotPreview figure={figure} isLoading={isLoading} error={error} />
-
-      <div className="flex flex-wrap items-center gap-2">
-        <ExportPlot
-          sessionId={sessionId}
-          kind={category}
-          params={lastSpec?.kind === category ? lastSpec.params : null}
-          disabled={!figure || isLoading}
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 lg:flex-row">
+        <PlotSidebar
+          spec={spec}
+          onChange={setSpec}
+          columns={columns}
+          numericColumns={numericColumns}
+          categoricalColumns={categoricalColumns}
         />
-        {onAddToReport && (
-          <button
-            onClick={() =>
-              onAddToReport({
-                id: crypto.randomUUID(),
-                kind: lastSpec.kind,
-                params: lastSpec.params,
-                label: describePlot(lastSpec.params),
-              })
-            }
-            disabled={!figure || isLoading}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            + Ajouter au rapport
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
 
-function FieldSelect({ label, value, onChange, options, allowEmpty }) {
-  return (
-    <label className="flex flex-col gap-1 text-sm">
-      <span className="font-medium text-slate-600 dark:text-slate-300">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="min-w-[9rem] rounded-md border border-slate-300 px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-      >
-        {allowEmpty && <option value="">—</option>}
-        {options.map((col) => (
-          <option key={col} value={col}>
-            {col}
-          </option>
-        ))}
-      </select>
-    </label>
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          {missingFields.length > 0 ? (
+            <div className="flex h-[480px] items-center justify-center rounded-lg border border-dashed border-slate-300 dark:border-slate-700">
+              <p className="text-sm text-slate-400 dark:text-slate-500">
+                Renseignez {missingFields.join(', ')} pour générer le graphique.
+              </p>
+            </div>
+          ) : error ? (
+            <div className="flex h-[480px] items-center justify-center rounded-lg border border-slate-200 dark:border-slate-800">
+              <ErrorBox>{error}</ErrorBox>
+            </div>
+          ) : !figure ? (
+            <div className="flex h-[480px] items-center justify-center rounded-lg border border-slate-200 dark:border-slate-800">
+              <p className="text-sm text-slate-400 dark:text-slate-500">Génération du graphique…</p>
+            </div>
+          ) : (
+            <ThemedPlot
+              data={figure.data}
+              layout={figure.layout}
+              height={520}
+              exportName={describeSpec(spec)}
+              useFigureTheme={spec.style.theme !== 'auto'}
+              onGraphDiv={(gd) => {
+                graphDiv.current = gd
+              }}
+            />
+          )}
+
+          {/* Barre d'outils flottante : Personnaliser | Enregistrer | Exporter | Partager */}
+          <div className="sticky bottom-3 z-10 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white/95 p-2 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+            <button
+              onClick={() => setPanelCollapsed((v) => !v)}
+              className={panelCollapsed ? PRIMARY_BUTTON_CLASS : BUTTON_CLASS}
+            >
+              Personnaliser
+            </button>
+            <button onClick={() => setShowManagement((v) => !v)} className={showManagement ? PRIMARY_BUTTON_CLASS : BUTTON_CLASS}>
+              Enregistrer
+            </button>
+            <ExportPlot
+              sessionId={sessionId}
+              kind="advanced"
+              params={lastPayload}
+              disabled={!figure || isLoading}
+              compact
+              width={Math.round((spec.style.width * spec.style.dpi) / 100)}
+              height={Math.round((spec.style.height * spec.style.dpi) / 100)}
+            />
+            <button onClick={shareConfig} disabled={!figure} className={BUTTON_CLASS} title="Copier la configuration du graphique">
+              Partager
+            </button>
+            <button onClick={importConfig} className={BUTTON_CLASS} title="Appliquer une configuration copiée">
+              Importer
+            </button>
+            {onAddToReport && (
+              <button
+                onClick={() =>
+                  onAddToReport({
+                    id: crypto.randomUUID(),
+                    kind: 'advanced',
+                    params: lastPayload,
+                    label: describeSpec(spec),
+                  })
+                }
+                disabled={!figure || isLoading}
+                className={BUTTON_CLASS}
+              >
+                + Rapport
+              </button>
+            )}
+
+            <span className="ml-auto flex items-center gap-1">
+              <button onClick={undo} disabled={historyIndex <= 0} className={BUTTON_CLASS} title="Annuler (Ctrl+Z)">
+                ↶
+              </button>
+              <button
+                onClick={redo}
+                disabled={historyIndex >= history.length - 1}
+                className={BUTTON_CLASS}
+                title="Rétablir (Ctrl+Maj+Z)"
+              >
+                ↷
+              </button>
+              <Badge tone="slate">
+                {historyIndex + 1}/{history.length}
+              </Badge>
+            </span>
+          </div>
+
+          {notice && (
+            <p className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+              {notice}
+            </p>
+          )}
+        </div>
+
+        <PlotStylePanel
+          spec={spec}
+          onChange={setSpec}
+          trendStats={trendStats}
+          collapsed={panelCollapsed}
+          onToggleCollapsed={() => setPanelCollapsed((v) => !v)}
+        />
+      </div>
+
+      {showManagement && (
+        <PlotGallery
+          presets={presets}
+          onSavePreset={handleSavePreset}
+          onLoadPreset={handleLoadPreset}
+          onDeletePreset={handleDeletePreset}
+          gallery={gallery}
+          onOpenGalleryItem={(item) => setSpec({ ...DEFAULT_SPEC, ...item.spec })}
+          onRemoveGalleryItem={(id) => setGallery((prev) => prev.filter((g) => g.id !== id))}
+          onCaptureCurrent={captureCurrent}
+          canCapture={Boolean(figure) && !isLoading}
+        />
+      )}
+    </div>
   )
 }

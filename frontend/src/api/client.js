@@ -37,10 +37,10 @@ export function plot3D(sessionId, params) {
   return api.post('/plot/3d', { session_id: sessionId, ...params })
 }
 
-export function exportPlot(sessionId, kind, params, format) {
+export function exportPlot(sessionId, kind, params, format, { width = 900, height = 600 } = {}) {
   return api.post(
     '/export/plot',
-    { session_id: sessionId, kind, params, format },
+    { session_id: sessionId, kind, params, format, width, height },
     { responseType: 'blob' },
   )
 }
@@ -134,4 +134,8 @@ export function getAdvancedStats(sessionId, method = 'pearson') {
 
 export function exportStatsTable(sessionId, { table, format, precision = 4 }) {
   return api.post('/stats/export', { session_id: sessionId, table, format, precision }, { responseType: 'blob' })
+}
+
+export function plotAdvanced(sessionId, payload) {
+  return api.post('/plot/advanced', { session_id: sessionId, ...payload })
 }

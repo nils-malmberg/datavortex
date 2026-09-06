@@ -20,6 +20,9 @@ export default function ThemedPlot({
   exportName = 'graphique',
   onGraphDiv,
   config = {},
+  // Quand la figure impose son propre thème (choix explicite de l'utilisateur),
+  // on n'écrase pas ses couleurs avec celles de l'interface.
+  useFigureTheme = false,
 }) {
   const [isDark] = useDarkMode()
   const graphDiv = useRef(null)
@@ -32,16 +35,18 @@ export default function ThemedPlot({
     [onGraphDiv],
   )
 
-  const themedLayout = {
-    ...layout,
-    autosize: true,
-    paper_bgcolor: 'rgba(0,0,0,0)',
-    plot_bgcolor: isDark ? '#0f172a' : '#f8fafc',
-    font: { color: isDark ? '#e2e8f0' : '#1e293b', ...(layout.font || {}) },
-    xaxis: { gridcolor: isDark ? '#1e293b' : '#e2e8f0', ...(layout.xaxis || {}) },
-    yaxis: { gridcolor: isDark ? '#1e293b' : '#e2e8f0', ...(layout.yaxis || {}) },
-    legend: { bgcolor: 'rgba(0,0,0,0)', ...(layout.legend || {}) },
-  }
+  const themedLayout = useFigureTheme
+    ? { ...layout, autosize: true }
+    : {
+        ...layout,
+        autosize: true,
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: isDark ? '#0f172a' : '#f8fafc',
+        font: { color: isDark ? '#e2e8f0' : '#1e293b', ...(layout.font || {}) },
+        xaxis: { gridcolor: isDark ? '#1e293b' : '#e2e8f0', ...(layout.xaxis || {}) },
+        yaxis: { gridcolor: isDark ? '#1e293b' : '#e2e8f0', ...(layout.yaxis || {}) },
+        legend: { bgcolor: 'rgba(0,0,0,0)', ...(layout.legend || {}) },
+      }
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-900">
@@ -67,4 +72,10 @@ export default function ThemedPlot({
 export function downloadPlot(graphDiv, { format = 'png', filename = 'graphique', width = 1200, height = 800 } = {}) {
   if (!graphDiv) return Promise.reject(new Error('Figure non initialisée.'))
   return Plotly.downloadImage(graphDiv, { format, filename, width, height, scale: 2 })
+}
+
+/** Capture une miniature PNG (data URL) de la figure rendue. */
+export function capturePlotThumbnail(graphDiv, { width = 480, height = 320 } = {}) {
+  if (!graphDiv) return Promise.reject(new Error('Figure non initialisée.'))
+  return Plotly.toImage(graphDiv, { format: 'png', width, height })
 }
