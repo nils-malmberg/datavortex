@@ -2,6 +2,8 @@
 
 DataVortex s'installe via [uv](https://docs.astral.sh/uv/), le gestionnaire de paquets Python, comme un outil en ligne de commande. Une seule commande installe l'application et toutes ses dépendances dans un environnement isolé — pas de configuration manuelle de venv, pas de conflit avec d'autres projets Python sur votre machine.
 
+> **Important** : DataVortex n'est pas publié sur PyPI — `uv tool install datavortex` (sans rien d'autre) installerait un paquet totalement différent : PyPI a déjà un paquet nommé `datavortex` publié par quelqu'un d'autre, sans rapport avec ce projet. Utilisez toujours l'URL Git complète ci-dessous, pas juste le nom.
+
 ## Sommaire
 
 - [Linux](#linux)
@@ -26,7 +28,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.bashrc   # ou ~/.zshrc selon votre shell
 
 # 3. Installer DataVortex
-uv tool install datavortex
+uv tool install "git+https://github.com/nils-malmberg/datavortex.git#subdirectory=datavortex-cli"
 
 # 4. Lancer
 datavortex
@@ -46,7 +48,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.zshrc   # shell par défaut sur macOS récent
 
 # 3. Installer DataVortex
-uv tool install datavortex
+uv tool install "git+https://github.com/nils-malmberg/datavortex.git#subdirectory=datavortex-cli"
 
 # 4. Lancer
 datavortex
@@ -65,7 +67,7 @@ irm https://astral.sh/uv/install.ps1 | iex
 # 2. Ouvrir un nouveau terminal PowerShell (pour que le PATH soit à jour)
 
 # 3. Installer DataVortex
-uv tool install datavortex
+uv tool install "git+https://github.com/nils-malmberg/datavortex.git#subdirectory=datavortex-cli"
 
 # 4. Lancer
 datavortex
@@ -92,6 +94,8 @@ datavortex --help
 uv tool upgrade datavortex
 ```
 
+`uv` se souvient d'où l'outil a été installé (l'URL Git) et récupère la dernière version depuis cette même source — pas besoin de repréciser l'URL complète.
+
 ## Désinstaller
 
 ```bash
@@ -109,6 +113,7 @@ Cela retire la commande et son environnement isolé. Vos fichiers de données ne
 | Problème | Solution |
 |---|---|
 | `datavortex: command not found` après installation | Le dossier des outils uv n'est pas dans le PATH. Lancez `uv tool update-shell` puis rouvrez le terminal. |
+| `No executables are provided by package 'datavortex'` | Vous avez lancé `uv tool install datavortex` sans l'URL Git — cette commande a installé un paquet PyPI sans rapport qui porte le même nom par coïncidence. Désinstallez-le (`uv tool uninstall datavortex`) et réinstallez avec l'URL Git complète ci-dessus. |
 | Port 8000 déjà utilisé | `datavortex --port 9000` |
 | Le terminal semble figé au lancement | Normal la première fois : le message « Chargement des modules… » indique que pandas/scikit-learn/TensorFlow s'initialisent (quelques secondes). |
 

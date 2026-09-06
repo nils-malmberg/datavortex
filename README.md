@@ -61,14 +61,16 @@ DataVortex est une plateforme interactive de visualisation et d'analyse de donn�
 | RAM | 4 Go | 8 Go+ |
 | Navigateur | Chrome/Edge 90+ | Chrome, Firefox, Safari récents |
 
+> **DataVortex n'est pas publié sur PyPI** (le nom `datavortex` y est déjà pris par un paquet sans rapport) — l'installation se fait directement depuis ce dépôt Git, pas via `uv tool install datavortex` seul.
+
 ### Linux / macOS
 
 ```bash
 # Installer uv (si nécessaire)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Installer DataVortex
-uv tool install datavortex
+# Installer DataVortex depuis ce dépôt
+uv tool install "git+https://github.com/nils-malmberg/datavortex.git#subdirectory=datavortex-cli"
 
 # Lancer
 datavortex
@@ -81,8 +83,8 @@ datavortex
 # Installer uv (si nécessaire)
 irm https://astral.sh/uv/install.ps1 | iex
 
-# Installer DataVortex
-uv tool install datavortex
+# Installer DataVortex depuis ce dépôt
+uv tool install "git+https://github.com/nils-malmberg/datavortex.git#subdirectory=datavortex-cli"
 
 # Lancer
 datavortex

@@ -2,10 +2,16 @@
 
 Toutes les phases de développement notables de DataVortex sont documentées ici, de la plus récente à la plus ancienne. Format inspiré de [Keep a Changelog](https://keepachangelog.com/), adapté au déroulé par phases de ce projet.
 
+## [1.0.1] — Correctif d'installation
+
+### Corrigé
+- `uv tool install datavortex` installait silencieusement un paquet PyPI totalement différent : `datavortex` y est déjà pris par un paquet sans rapport avec ce projet. Trouvé en testant l'installation en conditions réelles depuis un clone frais du tag v1.0.0. L'installation se fait maintenant via l'URL Git du dépôt (`uv tool install "git+https://github.com/nils-malmberg/datavortex.git#subdirectory=datavortex-cli"`), documentée dans README.md et INSTALLATION.md.
+- Même en installant depuis la bonne source, le frontend ne s'installait pas : `datavortex-cli/datavortex/static/` était ignoré par git en tant que « produit de build », mais rien dans le paquetage ne le reconstruisait automatiquement — un `uv tool install` depuis un clone Git donnait donc une API fonctionnelle sans aucune interface. Le frontend compilé est maintenant commité directement dans le dépôt.
+
 ## [1.0.0] — Phase 8.2 : distribution, aide intégrée, documentation — première version de production
 
 ### Ajouté
-- Distribution via `uv tool install datavortex` : une seule commande (`datavortex`) démarre l'API et sert le frontend pré-compilé sur le même port, avec `--port`, `--host`, `--open`, `--help-browser`, `--version`.
+- Distribution via `uv tool` : une seule commande (`datavortex`) démarre l'API et sert le frontend pré-compilé sur le même port, avec `--port`, `--host`, `--open`, `--help-browser`, `--version`.
 - Aide intégrée (F1 / Ctrl+H / bouton « ? ») : 12 sections, 63 sujets, recherche instantanée, liens croisés entre sujets liés.
 - Documentation complète : [INSTALLATION.md](INSTALLATION.md), [USAGE_GUIDE.md](USAGE_GUIDE.md), [API_DOCUMENTATION.md](API_DOCUMENTATION.md), [CONTRIBUTING.md](CONTRIBUTING.md), [LICENSE](LICENSE) (MIT), README réécrit.
 - Jeu de données de démonstration [`examples/ventes_demo.csv`](examples/ventes_demo.csv), utilisé par le guide d'utilisation.
