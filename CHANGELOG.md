@@ -2,6 +2,11 @@
 
 Toutes les phases de développement notables de DataVortex sont documentées ici, de la plus récente à la plus ancienne. Format inspiré de [Keep a Changelog](https://keepachangelog.com/), adapté au déroulé par phases de ce projet.
 
+## [1.0.3] — Sélection automatique d'une version de Python compatible
+
+### Corrigé
+- `requires-python = ">=3.10"` n'avait pas de borne haute : sur une machine sans Python 3.10/3.11 déjà installé, `uv` en téléchargeait automatiquement un plus récent (ex. 3.14 sur Windows) — que TensorFlow ne publie pas encore en wheel, avec une erreur de résolution de dépendances peu explicite (`No wheels with a matching Python ABI tag`). `requires-python` est maintenant borné à `>=3.10,<3.12` dans `backend/pyproject.toml` et `datavortex-cli/pyproject.toml`, pour que `uv` sélectionne/télécharge automatiquement une version compatible sans intervention manuelle (`--python 3.11` reste possible en secours, documenté dans INSTALLATION.md).
+
 ## [1.0.2] — Apple Silicon & installation sans Git
 
 ### Corrigé

@@ -92,7 +92,7 @@ from app.table_service import read_rows
 MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024  # 100MB
 PREVIEW_ROWS = 100
 
-app = FastAPI(title="DataVortex API", version="1.0.2")
+app = FastAPI(title="DataVortex API", version="1.0.3")
 
 app.add_middleware(
     CORSMiddleware,
