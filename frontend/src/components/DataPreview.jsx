@@ -26,6 +26,8 @@ import {
 const DEFAULT_COLUMN_WIDTH = 150
 const OVERSCAN_ROWS = 12
 const VIRTUALIZATION_THRESHOLD = 120
+const ROW_NUMBER_WIDTH = 52
+const SHOW_ROW_NUMBERS_KEY = 'datavortex_show_row_numbers'
 
 /**
  * Tableau de données (refonte Phase 8).
@@ -55,6 +57,14 @@ export default function DataPreview({ sessionId, refreshKey, onRequestFilter }) 
   const [hiddenColumns, setHiddenColumns] = useState([])
   const [showOptions, setShowOptions] = useState(false)
   const [highlightOutliers, setHighlightOutliers] = useState(true)
+  const [showRowNumbers, setShowRowNumbers] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SHOW_ROW_NUMBERS_KEY)
+      return saved === null ? true : saved === 'true'
+    } catch {
+      return true
+    }
+  })
   const [columnWidths, setColumnWidths] = useState({})
   const [collapsedGroups, setCollapsedGroups] = useState([])
 
@@ -143,16 +153,24 @@ export default function DataPreview({ sessionId, refreshKey, onRequestFilter }) 
 
   const widthOf = (column) => columnWidths[column] || DEFAULT_COLUMN_WIDTH
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(SHOW_ROW_NUMBERS_KEY, String(showRowNumbers))
+    } catch {
+      // stockage indisponible (mode privé...) : on ignore silencieusement
+    }
+  }, [showRowNumbers])
+
   const frozenOffsets = useMemo(() => {
     const offsets = {}
-    let running = 0
+    let running = showRowNumbers ? ROW_NUMBER_WIDTH : 0
     for (let i = 0; i < Math.min(frozenCount, visibleColumns.length); i += 1) {
       offsets[visibleColumns[i]] = running
       running += widthOf(visibleColumns[i])
     }
     return offsets
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleColumns, frozenCount, columnWidths])
+  }, [visibleColumns, frozenCount, columnWidths, showRowNumbers])
 
   const { rowHeight, padding } = densityConfig(density)
 
@@ -276,6 +294,12 @@ export default function DataPreview({ sessionId, refreshKey, onRequestFilter }) 
             onChange={setHighlightOutliers}
             hint="Colore en orange les valeurs hors des bornes de Tukey (Q1 − 1,5·IQR ; Q3 + 1,5·IQR)."
           />
+          <Toggle
+            label="Numéros de ligne"
+            checked={showRowNumbers}
+            onChange={setShowRowNumbers}
+            hint="Affiche l'indice d'origine de chaque ligne (conservé même après un filtre)."
+          />
           {hiddenColumns.length > 0 && (
             <button onClick={() => setHiddenColumns([])} className={BUTTON_CLASS}>
               Réafficher {hiddenColumns.length} colonne(s)
@@ -293,6 +317,15 @@ export default function DataPreview({ sessionId, refreshKey, onRequestFilter }) 
         <table className="min-w-full border-separate border-spacing-0">
           <thead className="sticky top-0 z-20">
             <tr>
+              {showRowNumbers && (
+                <th
+                  style={{ width: ROW_NUMBER_WIDTH, minWidth: ROW_NUMBER_WIDTH, position: 'sticky', left: 0, zIndex: 35 }}
+                  className="border-b border-slate-200 bg-slate-200 text-center text-[11px] font-semibold text-slate-500 shadow-[2px_0_0_0_rgba(148,163,184,0.35)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                  title="Indice d'origine de la ligne dans le jeu de données"
+                >
+                  #
+                </th>
+              )}
               {visibleColumns.map((col, colIndex) => {
                 const frozen = colIndex < frozenCount
                 return (
@@ -340,7 +373,7 @@ export default function DataPreview({ sessionId, refreshKey, onRequestFilter }) 
           <tbody>
             {virtualized && startIndex > 0 && (
               <tr style={{ height: startIndex * rowHeight }}>
-                <td colSpan={visibleColumns.length} />
+                <td colSpan={visibleColumns.length + (showRowNumbers ? 1 : 0)} />
               </tr>
             )}
             {renderedRows.map(({ row, key }) => {
@@ -353,7 +386,7 @@ export default function DataPreview({ sessionId, refreshKey, onRequestFilter }) 
                 <Fragment key={key}>
                   {startsGroup && (
                     <tr className="bg-blue-50 dark:bg-blue-950/30">
-                      <td colSpan={visibleColumns.length} className={`${padding} font-medium`}>
+                      <td colSpan={visibleColumns.length + (showRowNumbers ? 1 : 0)} className={`${padding} font-medium`}>
                         <button
                           onClick={() =>
                             setCollapsedGroups((prev) =>
@@ -374,6 +407,22 @@ export default function DataPreview({ sessionId, refreshKey, onRequestFilter }) 
                     </tr>
                   )}
                   <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                    {showRowNumbers && (
+                      <td
+                        style={{
+                          width: ROW_NUMBER_WIDTH,
+                          minWidth: ROW_NUMBER_WIDTH,
+                          height: rowHeight,
+                          position: 'sticky',
+                          left: 0,
+                          zIndex: 15,
+                        }}
+                        className={`border-b border-slate-100 bg-slate-50 text-center text-[12px] tabular-nums text-slate-400 shadow-[2px_0_0_0_rgba(148,163,184,0.25)] dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-500`}
+                        title="Indice d'origine (avant tout filtre)"
+                      >
+                        {typeof key === 'number' ? key + 1 : key}
+                      </td>
+                    )}
                     {visibleColumns.map((col, colIndex) => {
                       const value = row[col]
                       const missing = value === null || value === undefined
@@ -411,12 +460,12 @@ export default function DataPreview({ sessionId, refreshKey, onRequestFilter }) 
             })}
             {virtualized && endIndex < displayRows.length && (
               <tr style={{ height: (displayRows.length - endIndex) * rowHeight }}>
-                <td colSpan={visibleColumns.length} />
+                <td colSpan={visibleColumns.length + (showRowNumbers ? 1 : 0)} />
               </tr>
             )}
             {displayRows.length === 0 && (
               <tr>
-                <td colSpan={visibleColumns.length} className="p-8 text-center text-slate-400 dark:text-slate-500">
+                <td colSpan={visibleColumns.length + (showRowNumbers ? 1 : 0)} className="p-8 text-center text-slate-400 dark:text-slate-500">
                   Aucune ligne ne correspond à la recherche.
                 </td>
               </tr>
