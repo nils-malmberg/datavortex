@@ -167,3 +167,32 @@ export function getRows(sessionId, { offset = 0, limit = 100, sortBy, sortDir = 
 export function getColumnStats(sessionId, column) {
   return api.get(`/column/${sessionId}/${encodeURIComponent(column)}/stats`)
 }
+
+// --- Groupby & pivot (Phase 8) ------------------------------------------------
+
+export function runGroupBy(sessionId, { groupBy, aggregations, sortBy, sortAscending = true, limit = 500 }) {
+  return api.post('/groupby', {
+    session_id: sessionId,
+    group_by: groupBy,
+    aggregations,
+    sort_by: sortBy || undefined,
+    sort_ascending: sortAscending,
+    limit,
+  })
+}
+
+export function exportGroupBy(sessionId, { groupBy, aggregations, sortBy, sortAscending = true, format, precision = 4 }) {
+  return api.post(
+    '/groupby/export',
+    {
+      session_id: sessionId,
+      group_by: groupBy,
+      aggregations,
+      sort_by: sortBy || undefined,
+      sort_ascending: sortAscending,
+      format,
+      precision,
+    },
+    { responseType: 'blob' },
+  )
+}

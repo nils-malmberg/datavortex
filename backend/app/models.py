@@ -278,3 +278,32 @@ class AdvancedFilterRequest(BaseModel):
     invert: bool = False
     preview_rows: int = 50
     preview_mode: Literal["all", "kept", "removed"] = "all"
+
+
+# --- Groupby & agrégations (Phase 8) -------------------------------------------
+
+AggregationFunc = Literal[
+    "mean", "sum", "count", "min", "max", "std", "var", "sem",
+    "median", "quantile", "first", "last", "nunique",
+]
+
+
+class AggregationSpec(BaseModel):
+    column: str
+    func: AggregationFunc = "mean"
+    quantile: float = 0.5
+    alias: Optional[str] = None
+
+
+class GroupByRequest(BaseModel):
+    session_id: str
+    group_by: list[str] = []
+    aggregations: list[AggregationSpec] = []
+    sort_by: Optional[str] = None
+    sort_ascending: bool = True
+    limit: int = 500
+
+
+class GroupByExportRequest(GroupByRequest):
+    format: TableFormat = "csv"
+    precision: int = 4

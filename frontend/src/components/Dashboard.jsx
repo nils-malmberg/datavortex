@@ -7,12 +7,14 @@ import ColumnCreator from './ColumnCreator'
 import ExportData from './ExportData'
 import ReportBuilder from './ReportBuilder'
 import MLAnalysis from './MLAnalysis'
+import GroupByAnalysis from './GroupByAnalysis'
 
 const TABS = [
   { value: 'stats', label: 'Stats' },
   { value: 'plots', label: 'Visualisations' },
   { value: 'filters', label: 'Filtres' },
   { value: 'columns', label: 'Colonnes calculées' },
+  { value: 'groupby', label: 'Groupby' },
   { value: 'ml', label: 'Machine Learning' },
   { value: 'export', label: 'Export' },
 ]
@@ -61,12 +63,12 @@ export default function Dashboard({ parseResult, filename, onReset }) {
       />
 
       <div className="flex flex-col gap-4">
-        <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
           {TABS.map((tab) => (
             <button
               key={tab.value}
               onClick={() => setActiveTab(tab.value)}
-              className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
                 activeTab === tab.value
                   ? 'border-blue-600 text-blue-700 dark:border-blue-400 dark:text-blue-300'
                   : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
@@ -91,6 +93,7 @@ export default function Dashboard({ parseResult, filename, onReset }) {
         {activeTab === 'columns' && (
           <ColumnCreator sessionId={sessionId} onColumnCreated={bumpDataVersion} />
         )}
+        {activeTab === 'groupby' && <GroupByAnalysis sessionId={sessionId} refreshKey={dataVersion} />}
         {activeTab === 'ml' && (
           <MLAnalysis
             sessionId={sessionId}

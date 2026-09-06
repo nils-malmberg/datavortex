@@ -29,6 +29,7 @@ from app.errors import (
 from app.filter_service import apply_advanced_filter
 from app.filtering import evaluate_filter
 from app.formulas import evaluate_formula
+from app.groupby_service import run_groupby
 from app.ml import run_classification, run_clustering, run_dimensionality_reduction, run_regression
 from app.models import (
     AdvancedFilterRequest,
@@ -40,6 +41,8 @@ from app.models import (
     ExportCsvRequest,
     ExportPlotRequest,
     GenerateReportRequest,
+    GroupByExportRequest,
+    GroupByRequest,
     MergeRequest,
     ParseRequest,
     ParseResponse,
@@ -696,3 +699,33 @@ def get_rows(
         search_column=search_column,
         group_by=group_by,
     )
+
+
+# --- Groupby & agrégations (Phase 8) -------------------------------------------
+
+def _run_groupby_for(body) -> dict:
+    session = _get_parsed_session_or_error(body.session_id)
+    return run_groupby(
+        session.active_df(),
+        group_by=body.group_by,
+        aggregations=body.aggregations,
+        sort_by=body.sort_by,
+        sort_ascending=body.sort_ascending,
+        limit=body.limit,
+    )
+
+
+@app.post("/api/groupby")
+def groupby(body: GroupByRequest) -> dict:
+    """Agrège une ou plusieurs colonnes par groupe, avec tableau et graphique."""
+    result = _run_groupby_for(body)
+    result.pop("table")
+    figure = result.pop("figure")
+    result["figure"] = _figure_to_response(figure) if figure is not None else None
+    return result
+
+
+@app.post("/api/groupby/export")
+def export_groupby(body: GroupByExportRequest) -> Response:
+    result = _run_groupby_for(body)
+    return _table_response(result["table"], body.format, body.precision, "groupby")
