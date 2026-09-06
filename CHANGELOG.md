@@ -2,6 +2,12 @@
 
 Toutes les phases de développement notables de DataVortex sont documentées ici, de la plus récente à la plus ancienne. Format inspiré de [Keep a Changelog](https://keepachangelog.com/), adapté au déroulé par phases de ce projet.
 
+## [1.0.2] — Apple Silicon & installation sans Git
+
+### Corrigé
+- `tensorflow-cpu` (utilisé jusqu'ici sans condition) ne publie aucune wheel macOS ARM64 : l'installation échouait purement et simplement sur Apple Silicon (M1/M2/M3/M4). Dépendance désormais conditionnelle par plateforme (`sys_platform`/`platform_machine`) : `tensorflow-macos` sur Apple Silicon, `tensorflow-cpu` partout ailleurs — les deux fournissent le même module `tensorflow`, aucun changement de code nécessaire. Vérifié via le lockfile : les deux wheels (dont `tensorflow_macos-2.15.0-*-macosx_12_0_arm64.whl`) sont bien résolues et prêtes.
+- Toutes les instructions d'installation supposaient Git disponible, ce qui n'est pas toujours le cas sur un poste professionnel verrouillé. Ajout d'une méthode d'installation sans Git (téléchargement du ZIP du dépôt + `uv tool install ./datavortex-cli`) pour Linux, macOS et Windows, vérifiée de bout en bout.
+
 ## [1.0.1] — Correctif d'installation
 
 ### Corrigé

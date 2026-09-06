@@ -4,6 +4,8 @@ Ces tests ne démarrent jamais le serveur réel (pas de bind réseau) : --versio
 et --help sortent avant que cli.main() importe .server (import différé,
 volontairement, car il charge pandas/scikit-learn/tensorflow).
 """
+import re
+
 import pytest
 
 from datavortex import __version__
@@ -11,8 +13,10 @@ from datavortex.cli import build_parser, main
 from datavortex.config import get_default_port
 
 
-def test_version_string_matches_package():
-    assert __version__ == "1.0.1"
+def test_version_string_is_semver():
+    # Volontairement pas un pin exact : sinon ce test doit être édité à chaque
+    # bump de version, pour zéro valeur ajoutée (voir l'historique de ce fichier).
+    assert re.fullmatch(r"\d+\.\d+\.\d+", __version__)
 
 
 def test_version_flag_prints_version_and_exits(capsys):
