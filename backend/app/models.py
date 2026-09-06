@@ -307,3 +307,23 @@ class GroupByRequest(BaseModel):
 class GroupByExportRequest(GroupByRequest):
     format: TableFormat = "csv"
     precision: int = 4
+
+
+# --- Tableaux croisés dynamiques (Phase 8) -------------------------------------
+
+PivotAggFunc = Literal["mean", "sum", "count", "min", "max", "std", "var", "median", "nunique"]
+
+
+class PivotRequest(BaseModel):
+    session_id: str
+    index: list[str] = []
+    columns: list[str] = []
+    values: Optional[str] = None
+    aggfunc: PivotAggFunc = "mean"
+    margins: bool = False
+    percentage: Literal["none", "total", "row", "column"] = "none"
+
+
+class PivotExportRequest(PivotRequest):
+    format: TableFormat = "csv"
+    precision: int = 4

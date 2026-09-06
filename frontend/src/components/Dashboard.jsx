@@ -8,6 +8,7 @@ import ExportData from './ExportData'
 import ReportBuilder from './ReportBuilder'
 import MLAnalysis from './MLAnalysis'
 import GroupByAnalysis from './GroupByAnalysis'
+import PivotTableBuilder from './PivotTableBuilder'
 
 const TABS = [
   { value: 'stats', label: 'Stats' },
@@ -15,6 +16,7 @@ const TABS = [
   { value: 'filters', label: 'Filtres' },
   { value: 'columns', label: 'Colonnes calculées' },
   { value: 'groupby', label: 'Groupby' },
+  { value: 'pivot', label: 'Pivot' },
   { value: 'ml', label: 'Machine Learning' },
   { value: 'export', label: 'Export' },
 ]
@@ -94,6 +96,7 @@ export default function Dashboard({ parseResult, filename, onReset }) {
           <ColumnCreator sessionId={sessionId} onColumnCreated={bumpDataVersion} />
         )}
         {activeTab === 'groupby' && <GroupByAnalysis sessionId={sessionId} refreshKey={dataVersion} />}
+        {activeTab === 'pivot' && <PivotTableBuilder sessionId={sessionId} refreshKey={dataVersion} />}
         {activeTab === 'ml' && (
           <MLAnalysis
             sessionId={sessionId}

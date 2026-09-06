@@ -196,3 +196,23 @@ export function exportGroupBy(sessionId, { groupBy, aggregations, sortBy, sortAs
     { responseType: 'blob' },
   )
 }
+
+export function runPivot(sessionId, { index, columns, values, aggfunc, margins, percentage }) {
+  return api.post('/pivot', {
+    session_id: sessionId,
+    index,
+    columns,
+    values,
+    aggfunc,
+    margins,
+    percentage,
+  })
+}
+
+export function exportPivot(sessionId, { index, columns, values, aggfunc, margins, percentage, format, precision = 4 }) {
+  return api.post(
+    '/pivot/export',
+    { session_id: sessionId, index, columns, values, aggfunc, margins, percentage, format, precision },
+    { responseType: 'blob' },
+  )
+}

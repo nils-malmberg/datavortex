@@ -178,12 +178,20 @@ export function Toggle({ label, checked, onChange, hint }) {
 }
 
 /** Sélection multiple sous forme de puces cliquables. */
-export function ChipMultiSelect({ options, selected, onToggle, emptyMessage = 'Aucune colonne disponible.' }) {
+export function ChipMultiSelect({
+  options,
+  selected,
+  onToggle,
+  emptyMessage = 'Aucune colonne disponible.',
+  // Nomme le groupe pour les lecteurs d'écran : plusieurs listes de puces
+  // coexistent souvent sur un même panneau (lignes / colonnes d'un pivot…).
+  groupLabel,
+}) {
   if (options.length === 0) {
     return <p className="text-sm text-slate-400 dark:text-slate-500">{emptyMessage}</p>
   }
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div role="group" aria-label={groupLabel} className="flex flex-wrap gap-1.5">
       {options.map((col) => {
         const isOn = selected.includes(col)
         return (
@@ -352,4 +360,31 @@ export function formatPValue(p) {
   if (p < 1e-10) return '< 1e-10'
   if (p < 1e-4) return p.toExponential(2)
   return p.toFixed(4)
+}
+
+/**
+ * Classe les colonnes catégorielles de la plus utile à la moins utile pour un
+ * regroupement, en estimant leur cardinalité sur l'échantillon d'aperçu.
+ *
+ * Sans ce tri, un panneau de regroupement propose par défaut la première
+ * colonne texte du fichier — souvent un identifiant ou un nom propre, qui
+ * produit autant de groupes que de lignes et donc un résultat inexploitable.
+ */
+export function rankGroupingColumns(columns, columnTypes, sampleRows, { maxDistinct = 30 } = {}) {
+  const numericTypes = ['integer', 'float']
+  const candidates = columns.filter((c) => !numericTypes.includes(columnTypes[c]))
+  const distinctCount = (col) => new Set((sampleRows || []).map((row) => row[col])).size
+
+  return candidates
+    .map((col) => ({ col, distinct: distinctCount(col) }))
+    // Une colonne dont l'échantillon ne montre que des valeurs uniques est
+    // presque sûrement un identifiant : elle passe en dernier.
+    .filter(({ distinct }) => distinct > 1)
+    .sort((a, b) => {
+      const aUsable = a.distinct <= maxDistinct
+      const bUsable = b.distinct <= maxDistinct
+      if (aUsable !== bUsable) return aUsable ? -1 : 1
+      return a.distinct - b.distinct
+    })
+    .map(({ col }) => col)
 }

@@ -15,6 +15,7 @@ import {
   Panel,
   SliderField,
   StatCard,
+  rankGroupingColumns,
 } from './ui/common'
 
 const NUMERIC_TYPES = ['integer', 'float']
@@ -66,9 +67,9 @@ export default function GroupByAnalysis({ sessionId, refreshKey }) {
     getPreview(sessionId).then(({ data }) => {
       setColumns(data.columns)
       setColumnTypes(data.column_types)
-      const categorical = data.columns.filter((c) => !NUMERIC_TYPES.includes(data.column_types[c]))
+      const grouping = rankGroupingColumns(data.columns, data.column_types, data.rows)
       const numeric = data.columns.filter((c) => NUMERIC_TYPES.includes(data.column_types[c]))
-      setGroupBy(categorical.slice(0, 1))
+      setGroupBy(grouping.slice(0, 1))
       setAggregations(numeric.slice(0, 1).map((col) => ({ id: nextId++, column: col, func: 'mean', quantile: 0.5, alias: '' })))
       setResult(null)
     })
@@ -159,7 +160,7 @@ export default function GroupByAnalysis({ sessionId, refreshKey }) {
             Regrouper par
             <InfoTip text="Plusieurs colonnes créent des groupes croisés : une ligne de résultat par combinaison observée." />
           </span>
-          <ChipMultiSelect options={columns} selected={groupBy} onToggle={toggleGroupColumn} />
+          <ChipMultiSelect groupLabel="Colonnes de regroupement" options={columns} selected={groupBy} onToggle={toggleGroupColumn} />
         </div>
 
         <div className="flex flex-col gap-2">

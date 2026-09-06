@@ -47,6 +47,8 @@ from app.models import (
     ParseRequest,
     ParseResponse,
     PCARequest,
+    PivotExportRequest,
+    PivotRequest,
     Plot1DRequest,
     Plot2DRequest,
     Plot3DRequest,
@@ -64,6 +66,7 @@ from app.parsing import (
     parse_excel,
     parse_json,
 )
+from app.pivot_service import run_pivot
 from app.plotting import build_1d_figure, build_2d_figure, build_3d_figure
 from app.plotting_service import build_advanced_figure
 from app.report import build_report
@@ -729,3 +732,34 @@ def groupby(body: GroupByRequest) -> dict:
 def export_groupby(body: GroupByExportRequest) -> Response:
     result = _run_groupby_for(body)
     return _table_response(result["table"], body.format, body.precision, "groupby")
+
+
+# --- Tableaux croisés dynamiques (Phase 8) -------------------------------------
+
+def _run_pivot_for(body) -> dict:
+    session = _get_parsed_session_or_error(body.session_id)
+    return run_pivot(
+        session.active_df(),
+        index=body.index,
+        columns=body.columns,
+        values=body.values or "",
+        aggfunc=body.aggfunc,
+        margins=body.margins,
+        percentage=body.percentage,
+    )
+
+
+@app.post("/api/pivot")
+def pivot(body: PivotRequest) -> dict:
+    """Tableau croisé dynamique, avec totaux, pourcentages et heatmap associée."""
+    result = _run_pivot_for(body)
+    result.pop("table")
+    figure = result.pop("figure")
+    result["figure"] = _figure_to_response(figure) if figure is not None else None
+    return result
+
+
+@app.post("/api/pivot/export")
+def export_pivot(body: PivotExportRequest) -> Response:
+    result = _run_pivot_for(body)
+    return _table_response(result["table"], body.format, body.precision, "pivot")
