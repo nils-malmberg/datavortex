@@ -6,9 +6,22 @@ import Dashboard from './Dashboard'
 // La clé sur Dashboard force un remontage complet à chaque changement de
 // session (changement d'onglet ou nouveau fichier), pour repartir d'un état
 // propre plutôt que de faire fuir de l'état entre deux fichiers différents.
-export default function TabWorkspace({ tab, onUploaded, onParsed, onReset }) {
+export default function TabWorkspace({
+  tab,
+  onUploaded,
+  onParsed,
+  onReset,
+  mergeableTabs,
+  onOpenMergeDialog,
+}) {
   if (tab.step === 'upload') {
-    return <UploadZone onUploaded={onUploaded} />
+    return (
+      <UploadZone
+        onUploaded={onUploaded}
+        mergeableTabs={mergeableTabs}
+        onOpenMergeDialog={onOpenMergeDialog}
+      />
+    )
   }
 
   if (tab.step === 'separator' && tab.uploadData) {

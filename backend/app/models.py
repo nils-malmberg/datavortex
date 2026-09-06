@@ -132,3 +132,11 @@ class GenerateReportRequest(BaseModel):
     plots: list[ReportPlotSpec] = []
     page_format: Literal["A4", "Letter"] = "A4"
     orientation: Literal["portrait", "landscape"] = "portrait"
+
+
+# --- Fusion multi-fichiers (Phase 5 update) -----------------------------------
+
+class MergeRequest(BaseModel):
+    session_ids: list[str]
+    mode: Literal["concat", "merge"]
+    key_column: Optional[str] = None

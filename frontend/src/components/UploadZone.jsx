@@ -8,7 +8,7 @@ function isAcceptedFile(file) {
   return ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext))
 }
 
-export default function UploadZone({ onUploaded }) {
+export default function UploadZone({ onUploaded, mergeableTabs, onOpenMergeDialog }) {
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState(null)
@@ -95,6 +95,21 @@ export default function UploadZone({ onUploaded }) {
         <p className="max-w-xl rounded-md bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
           {error}
         </p>
+      )}
+
+      {mergeableTabs && mergeableTabs.length >= 2 && (
+        <div className="w-full max-w-xl rounded-lg border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="font-medium text-slate-600 dark:text-slate-300">Options avancées</p>
+          <p className="mt-1 text-slate-500 dark:text-slate-400">
+            Combiner des fichiers déjà ouverts dans d&apos;autres onglets.
+          </p>
+          <button
+            onClick={onOpenMergeDialog}
+            className="mt-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+          >
+            Merge/Concat existing files
+          </button>
+        </div>
       )}
     </div>
   )

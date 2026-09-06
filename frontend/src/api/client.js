@@ -79,4 +79,8 @@ export function generateReportPdf(sessionId, { sections, plots = [], pageFormat 
   )
 }
 
+export function mergeSessions(sessionIds, mode, keyColumn) {
+  return api.post('/merge', { session_ids: sessionIds, mode, key_column: keyColumn })
+}
+
 export default api

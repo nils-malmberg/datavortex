@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { deleteSession, getPreview } from '../api/client'
 import TabWorkspace from './TabWorkspace'
+import MergeDialog from './MergeDialog'
 
 const STORAGE_KEY = 'datavortex_tabs'
 
@@ -42,6 +43,7 @@ export default function TabManager() {
   const [tabs, setTabs] = useState([])
   const [activeTabId, setActiveTabId] = useState(null)
   const [isRestoring, setIsRestoring] = useState(true)
+  const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false)
 
   // Restaure les onglets sauvegardés au montage, en validant que chaque
   // session existe toujours côté backend (elle a pu expirer après 1h, ou le
@@ -176,6 +178,23 @@ export default function TabManager() {
     })
   }
 
+  const mergeableTabs = tabs
+    .filter((t) => t.step === 'dashboard' && t.sessionId)
+    .map((t) => ({ sessionId: t.sessionId, filename: t.filename }))
+
+  const handleMergeCreated = (result) => {
+    if (activeTab) {
+      updateTab(activeTab.clientId, {
+        sessionId: result.sessionId,
+        filename: result.filename,
+        step: 'dashboard',
+        uploadData: null,
+        parseResult: result.parseResult,
+      })
+    }
+    setIsMergeDialogOpen(false)
+  }
+
   if (isRestoring) {
     return <p className="p-8 text-sm text-slate-500 dark:text-slate-400">Chargement…</p>
   }
@@ -222,6 +241,16 @@ export default function TabManager() {
           onUploaded={(data) => handleUploaded(activeTab.clientId, data)}
           onParsed={(result) => handleParsed(activeTab.clientId, result)}
           onReset={() => handleResetTab(activeTab.clientId)}
+          mergeableTabs={mergeableTabs}
+          onOpenMergeDialog={() => setIsMergeDialogOpen(true)}
+        />
+      )}
+
+      {isMergeDialogOpen && (
+        <MergeDialog
+          tabs={mergeableTabs}
+          onClose={() => setIsMergeDialogOpen(false)}
+          onCreated={handleMergeCreated}
         />
       )}
     </div>

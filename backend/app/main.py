@@ -34,6 +34,7 @@ from app.models import (
     ExportCsvRequest,
     ExportPlotRequest,
     GenerateReportRequest,
+    MergeRequest,
     ParseRequest,
     ParseResponse,
     Plot1DRequest,
@@ -201,6 +202,69 @@ def parse_session(body: ParseRequest) -> ParseResponse:
         columns=[str(c) for c in df.columns],
         column_types=detect_column_types(df),
     )
+
+
+@app.post("/api/merge")
+def merge_sessions(body: MergeRequest) -> dict:
+    if len(body.session_ids) < 2:
+        raise AppError(400, "INSUFFICIENT_SESSIONS", "Sélectionnez au moins 2 fichiers à fusionner.")
+
+    sessions = [_get_parsed_session_or_error(sid) for sid in body.session_ids]
+    dfs = [s.active_df() for s in sessions]
+
+    if body.mode == "concat":
+        column_sets = [frozenset(df.columns) for df in dfs]
+        if len(set(column_sets)) > 1:
+            details = "; ".join(f"{s.filename} : {sorted(df.columns)}" for s, df in zip(sessions, dfs))
+            raise AppError(
+                400,
+                "INCOMPATIBLE_COLUMNS",
+                f"Les fichiers sélectionnés n'ont pas les mêmes colonnes, la concaténation nécessite "
+                f"des schémas identiques. Colonnes trouvées — {details}",
+            )
+        merged = pd.concat(dfs, axis=0, ignore_index=True)
+    else:
+        if not body.key_column:
+            raise AppError(400, "MISSING_KEY_COLUMN", "Une colonne clé est requise pour un merge.")
+        for session, df in zip(sessions, dfs):
+            if body.key_column not in df.columns:
+                raise AppError(
+                    400,
+                    "KEY_COLUMN_NOT_FOUND",
+                    f"La colonne '{body.key_column}' est absente du fichier '{session.filename}'.",
+                )
+        merged = dfs[0]
+        for df in dfs[1:]:
+            try:
+                merged = pd.merge(merged, df, on=body.key_column, how="inner")
+            except Exception as exc:
+                raise AppError(400, "MERGE_FAILED", f"Échec du merge : {exc}")
+        if merged.shape[0] == 0:
+            raise AppError(
+                422,
+                "MERGE_EMPTY_RESULT",
+                "Le merge ne produit aucune ligne : aucune valeur commune trouvée sur la colonne clé.",
+            )
+
+    label = f"{'Concat' if body.mode == 'concat' else 'Merge'} : " + " + ".join(s.filename for s in sessions)
+    new_session = store.create(
+        filename=label,
+        file_kind="merged",
+        raw_bytes=b"",
+        encoding="utf-8",
+        detected_separator=None,
+    )
+    new_session.df = merged
+    new_session.separator = None
+
+    return {
+        "new_session_id": new_session.session_id,
+        "filename": label,
+        "status": "ok",
+        "row_count": int(merged.shape[0]),
+        "column_count": int(merged.shape[1]),
+        "columns": [str(c) for c in merged.columns],
+    }
 
 
 @app.get("/api/data/{session_id}/preview")
