@@ -220,3 +220,7 @@ export function exportPivot(sessionId, { index, columns, values, aggfunc, margin
 export function getDetailedProfile(sessionId) {
   return api.get(`/profile/${sessionId}/detailed`)
 }
+
+export function runStatisticalTest(sessionId, payload) {
+  return api.post('/stats/hypothesis_test', { session_id: sessionId, ...payload })
+}

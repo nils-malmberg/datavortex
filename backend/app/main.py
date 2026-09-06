@@ -43,6 +43,7 @@ from app.models import (
     GenerateReportRequest,
     GroupByExportRequest,
     GroupByRequest,
+    HypothesisTestRequest,
     MergeRequest,
     ParseRequest,
     ParseResponse,
@@ -75,6 +76,7 @@ from app.serialize import dataframe_to_records
 from app.session_store import Session, store
 from app.stats import column_summary, dataframe_summary
 from app.stats_service import advanced_stats, stats_export_table
+from app.stats_tests_service import run_statistical_test
 from app.table_service import read_rows
 
 MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024  # 100MB
@@ -776,4 +778,17 @@ def get_detailed_profile(session_id: str) -> dict:
     result["session_id"] = session_id
     result["filename"] = session.filename
     result["filtered"] = session.filtered_df is not None
+    return result
+
+
+# --- Tests statistiques (Phase 8) ----------------------------------------------
+
+@app.post("/api/stats/hypothesis_test")
+def hypothesis_test(body: HypothesisTestRequest) -> dict:
+    """Test statistique : comparaison de groupes, ANOVA, corrélation ou ajustement.
+    Renvoie statistique, p-value, taille d'effet, interprétation et visualisation."""
+    session = _get_parsed_session_or_error(body.session_id)
+    result = run_statistical_test(session.active_df(), body)
+    figure = result.pop("_figure", None)
+    result["figure"] = _figure_to_response(figure) if figure is not None else None
     return result

@@ -327,3 +327,33 @@ class PivotRequest(BaseModel):
 class PivotExportRequest(PivotRequest):
     format: TableFormat = "csv"
     precision: int = 4
+
+
+# --- Tests statistiques (Phase 8) ----------------------------------------------
+
+StatTestFamily = Literal["hypothesis", "anova", "correlation", "goodness_of_fit"]
+StatTestName = Literal[
+    "ttest_ind", "ttest_rel", "ttest_1samp", "mannwhitney", "wilcoxon",
+    "one_way", "two_way",
+    "pearson", "spearman", "kendall",
+    "shapiro", "ks", "anderson", "chi2",
+]
+
+
+class HypothesisTestRequest(BaseModel):
+    session_id: str
+    family: StatTestFamily = "hypothesis"
+    test: StatTestName = "ttest_ind"
+    column: Optional[str] = None
+    column_b: Optional[str] = None
+    group_column: Optional[str] = None
+    group_a: Optional[str] = None
+    group_b: Optional[str] = None
+    factor_a: Optional[str] = None
+    factor_b: Optional[str] = None
+    alpha: float = 0.05
+    alternative: Literal["two-sided", "less", "greater"] = "two-sided"
+    popmean: float = 0.0
+    equal_variance: bool = False
+    post_hoc: Literal["none", "tukey", "bonferroni"] = "tukey"
+    distribution: Literal["norm", "expon", "uniform", "lognorm"] = "norm"

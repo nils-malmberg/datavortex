@@ -10,6 +10,7 @@ import MLAnalysis from './MLAnalysis'
 import GroupByAnalysis from './GroupByAnalysis'
 import PivotTableBuilder from './PivotTableBuilder'
 import DataProfile from './DataProfile'
+import StatisticalTests from './StatisticalTests'
 
 const TABS = [
   { value: 'stats', label: 'Stats' },
@@ -19,6 +20,7 @@ const TABS = [
   { value: 'groupby', label: 'Groupby' },
   { value: 'pivot', label: 'Pivot' },
   { value: 'profile', label: 'Profil' },
+  { value: 'tests', label: 'Tests stats' },
   { value: 'ml', label: 'Machine Learning' },
   { value: 'export', label: 'Export' },
 ]
@@ -100,6 +102,7 @@ export default function Dashboard({ parseResult, filename, onReset }) {
         {activeTab === 'groupby' && <GroupByAnalysis sessionId={sessionId} refreshKey={dataVersion} />}
         {activeTab === 'pivot' && <PivotTableBuilder sessionId={sessionId} refreshKey={dataVersion} />}
         {activeTab === 'profile' && <DataProfile sessionId={sessionId} refreshKey={dataVersion} />}
+        {activeTab === 'tests' && <StatisticalTests sessionId={sessionId} refreshKey={dataVersion} />}
         {activeTab === 'ml' && (
           <MLAnalysis
             sessionId={sessionId}
