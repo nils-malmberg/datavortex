@@ -15,7 +15,7 @@ const DEFAULT_SECTIONS = [
 
 const OPTIONAL_KIND_LABELS = {
   '1d': 'Graphique', '2d': 'Graphique', '3d': 'Graphique', advanced: 'Graphique',
-  ml: 'Modèle ML', groupby: 'GroupBy', pivot: 'Pivot',
+  ml: 'Modèle ML', groupby: 'GroupBy', pivot: 'Pivot', 'multi-series': 'Graphique multi-séries',
 }
 
 /**
