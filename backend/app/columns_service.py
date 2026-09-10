@@ -317,6 +317,9 @@ def apply_transform(session, transform: str, source: str, params: dict,
         df[target] = result
         created = [target]
 
+    # Les colonnes ci-dessus sont écrites en place dans `session.df` : la
+    # session ne le voit pas passer, il faut donc invalider les caches ici.
+    session.bump_version()
     _refresh_filter(session)
     state = _columns_state(session)
     state["created_columns"] = created

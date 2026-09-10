@@ -21,6 +21,15 @@ from app.parsing import detect_column_type
 
 # Bornes de sûreté : ces analyses sont O(n) à O(n²) et tournent en synchrone.
 MAX_SHAPIRO_SAMPLE = 5000
+
+# Taille d'échantillon pour l'ajustement des lois candidates. Chaque loi trie
+# les valeurs (test de Kolmogorov-Smirnov) : sur 1,5 million de points, cinq
+# lois coûtaient neuf secondes de tri. L'échantillonnage n'est pas seulement
+# plus rapide, il est statistiquement plus juste : passé quelques dizaines de
+# milliers de points, le test KS rejette *toute* loi, y compris la bonne, parce
+# que la moindre irrégularité devient significative. C'est la même raison qui
+# fait déjà échantillonner le test de Shapiro-Wilk ci-dessus.
+MAX_FIT_SAMPLE = 50_000
 MAX_MISSING_MATRIX_ROWS = 300
 MAX_QQ_POINTS = 500
 MAX_MISSING_PATTERNS = 12
@@ -327,7 +336,10 @@ def distribution_analysis(df: pd.DataFrame, columns: Optional[list[str]] = None)
         kurt = float(sps.kurtosis(values))  # excès de kurtosis (Fisher)
 
         normality = _normality_tests(values)
-        fits = [f for f in (_fit_candidate(values, law) for law in CANDIDATE_LAWS) if f]
+        fit_values = values
+        if values.size > MAX_FIT_SAMPLE:
+            fit_values = np.random.default_rng(42).choice(values, MAX_FIT_SAMPLE, replace=False)
+        fits = [f for f in (_fit_candidate(fit_values, law) for law in CANDIDATE_LAWS) if f]
         # Classement par AIC (le plus petit gagne) ; le test KS filtre ensuite
         # les ajustements qui, même « meilleurs », restent inacceptables.
         fits.sort(key=lambda f: f["aic"] if f["aic"] is not None else float("inf"))

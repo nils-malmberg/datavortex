@@ -33,6 +33,9 @@ MAX_SESSIONS = 10  # nombre maximal de fichiers ouverts simultanément
 # Réglable via DATAVORTEX_SPILL_MB, comme le seuil d'analyse rapide.
 SPILL_THRESHOLD_BYTES = int(float(os.environ.get("DATAVORTEX_SPILL_MB", "50")) * 1024 * 1024)
 
+# Attributs dont toute réaffectation change les données vues par les routes.
+_VERSIONED_FIELDS = frozenset({"df", "filtered_df", "active_filter"})
+
 
 @dataclass
 class Session:
@@ -61,6 +64,29 @@ class Session:
     # existait déjà entre deux requêtes HTTP concurrentes ; l'exécution en
     # arrière-plan le rend simplement plus probable.
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+    # Incrémenté à chaque changement des données de la session (Phase 10.1).
+    # Sert de clé de validité aux résultats mis en cache : un cache indexé sur
+    # le seul `session_id` renverrait un profil calculé avant l'application
+    # d'un filtre.
+    data_version: int = 0
+
+    def __setattr__(self, name: str, value: object) -> None:
+        super().__setattr__(name, value)
+        # Le comptage vit ici plutôt qu'aux 17 points de mutation répartis dans
+        # main.py, columns_service.py et filter_service.py : en confier la
+        # responsabilité aux appelants, c'est garantir qu'un futur point de
+        # mutation l'oubliera et servira des résultats périmés.
+        if name in _VERSIONED_FIELDS:
+            super().__setattr__("data_version", getattr(self, "data_version", 0) + 1)
+
+    def bump_version(self) -> None:
+        """Invalide les caches après une mutation *en place* du DataFrame.
+
+        Les réaffectations sont détectées automatiquement ; une écriture comme
+        `session.df[col] = values` ne passe pas par `__setattr__` de la session
+        et doit donc le signaler elle-même.
+        """
+        self.data_version += 1
 
     def touch(self) -> None:
         self.last_accessed = time.time()

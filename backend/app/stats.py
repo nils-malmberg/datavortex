@@ -54,19 +54,21 @@ def numeric_stats(series: pd.Series) -> dict[str, Any]:
 
 
 def string_stats(series: pd.Series) -> dict[str, Any]:
-    clean = series.dropna().astype(str)
-    count = int(clean.count())
-    unique = int(clean.nunique())
-    if count == 0:
-        mode = None
-        top_values = []
-    else:
-        value_counts = clean.value_counts()
-        mode = value_counts.index[0] if len(value_counts) else None
-        top_values = [
-            {"value": val, "count": int(cnt)}
-            for val, cnt in value_counts.head(10).items()
-        ]
+    clean = series.dropna()
+    # `value_counts` fournit déjà l'effectif, le nombre de valeurs distinctes et
+    # le mode : les dériver d'une seule passe de hachage évite les deux
+    # parcours supplémentaires que coûtaient `count()` et `nunique()`.
+    value_counts = clean.astype(str).value_counts() if len(clean) else None
+    if value_counts is None or value_counts.empty:
+        return {"count": 0, "unique": 0, "mode": None, "top_values": []}
+
+    count = int(value_counts.sum())
+    unique = int(value_counts.size)
+    mode = value_counts.index[0]
+    top_values = [
+        {"value": val, "count": int(cnt)}
+        for val, cnt in value_counts.head(10).items()
+    ]
     return {
         "count": count,
         "unique": unique,

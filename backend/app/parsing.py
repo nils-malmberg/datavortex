@@ -8,6 +8,12 @@ import chardet
 import pandas as pd
 
 CANDIDATE_SEPARATORS = [",", ";", "\t", "|"]
+
+# Fenêtre de tête dans laquelle `detect_column_type` cherche ses 30 valeurs
+# non nulles témoins. Assez large pour traverser un début de fichier clairsemé,
+# assez étroite pour rester en temps constant sur un fichier de plusieurs
+# millions de lignes.
+TYPE_SAMPLE_WINDOW = 10_000
 SEPARATOR_LABELS = {
     ",": "Virgule ( , )",
     ";": "Point-virgule ( ; )",
@@ -107,11 +113,19 @@ def detect_column_type(series: pd.Series) -> str:
         return "datetime"
 
     # Colonne "object" : on tente une détection de dates sur un échantillon.
-    non_null = series.dropna()
+    # L'échantillon est prélevé sur une fenêtre de tête bornée, pas sur la
+    # colonne entière : `dropna().astype(str)` sur 3 millions de valeurs pour
+    # n'en regarder que 30 coûtait ~100 ms par colonne, payés à chaque appel —
+    # et cette fonction est appelée par presque toutes les routes.
+    non_null = series.head(TYPE_SAMPLE_WINDOW).dropna()
+    if len(non_null) == 0:
+        # Fenêtre entièrement vide : la colonne peut malgré tout porter des
+        # valeurs plus loin, on paie alors le parcours complet (cas rare).
+        non_null = series.dropna()
     if len(non_null) == 0:
         return "string"
 
-    sample = non_null.astype(str).head(30)
+    sample = non_null.head(30).astype(str)
     try:
         parsed = pd.to_datetime(sample, errors="coerce")
         success_ratio = parsed.notna().mean()

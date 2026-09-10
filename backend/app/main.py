@@ -18,6 +18,7 @@ import pandas as pd
 from fastapi import FastAPI, File, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from app.async_tasks import (
     STATUS_DONE,
@@ -26,6 +27,7 @@ from app.async_tasks import (
 from app.async_tasks import (
     registry as task_registry,
 )
+from app.cache import cache
 from app.columns_service import apply_column_operation, apply_transform, describe_columns
 from app.data_engine import POLARS_AVAILABLE, load_csv, sniff_sample
 from app.data_service import (
@@ -153,6 +155,7 @@ def health() -> dict:
         "uptime_seconds": uptime_seconds(),
         "memory": memory_usage(),
         "tasks": task_registry.stats(),
+        "cache": cache.stats(),
         "polars_available": POLARS_AVAILABLE,
     }
 
@@ -161,6 +164,7 @@ def health() -> dict:
 def delete_session(session_id: str) -> dict:
     """Libère une session immédiatement (ex : fermeture d'un onglet côté frontend)."""
     store.delete(session_id)
+    cache.invalidate_session(session_id)
     return {"deleted": True}
 
 
@@ -179,6 +183,16 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
         )
 
     filename = file.filename or "fichier_sans_nom"
+    # Tout ce qui suit est du calcul bloquant — décompression, détection
+    # d'encoding, analyse Excel/Parquet, écriture de plusieurs centaines de Mo
+    # sur disque. Exécuté directement dans cette coroutine, il immobilise la
+    # boucle d'événements, donc *toutes* les autres requêtes : c'est ce qui
+    # faisait paraître l'interface figée pendant l'envoi d'un gros fichier.
+    return await run_in_threadpool(_ingest_upload, filename, raw_bytes)
+
+
+def _ingest_upload(filename: str, raw_bytes: bytes) -> UploadResponse:
+    """Partie synchrone de l'upload, exécutée dans le pool de threads."""
     try:
         fmt = detect_format(filename)
     except ValueError as exc:
@@ -390,7 +404,12 @@ def get_preview(session_id: str, rows: int = PREVIEW_ROWS) -> dict:
     return {
         "session_id": session_id,
         "columns": [str(c) for c in df.columns],
-        "column_types": detect_column_types(df),
+        # Les types décrivent les colonnes, pas la tranche affichée : mis en
+        # cache, ils ne sont plus recalculés à chaque ouverture d'un onglet.
+        "column_types": cache.get_or_compute(
+            cache.key(session_id, session.data_version, "column_types"),
+            lambda: detect_column_types(df),
+        ),
         "rows": dataframe_to_records(limited),
         "total_rows": int(df.shape[0]),
         "total_columns": int(df.shape[1]),
@@ -403,7 +422,11 @@ def get_preview(session_id: str, rows: int = PREVIEW_ROWS) -> dict:
 @app.get("/api/stats/{session_id}")
 def get_stats(session_id: str) -> dict:
     session = _get_parsed_session_or_error(session_id)
-    summary = dataframe_summary(session.active_df())
+    summary = cache.get_or_compute(
+        cache.key(session_id, session.data_version, "stats"),
+        lambda: dataframe_summary(session.active_df()),
+    )
+    summary = dict(summary)
     summary["session_id"] = session_id
     summary["filename"] = session.filename
     summary["filtered"] = session.filtered_df is not None
@@ -477,7 +500,10 @@ def create_column(session_id: str, body: CreateColumnRequest) -> dict:
         )
 
     result, error_count = evaluate_formula(session.df, body.formula)
+    # Écriture en place : elle ne passe pas par `Session.__setattr__`, donc le
+    # numéro de version — et les caches qui en dépendent — doit être signalé ici.
     session.df[body.name] = result
+    session.bump_version()
 
     if session.active_filter is not None:
         mask = evaluate_filter(session.df, session.active_filter)
@@ -789,7 +815,11 @@ def _table_response(table: pd.DataFrame, fmt: str, precision: int, basename: str
 def get_advanced_stats(session_id: str, method: str = "pearson") -> dict:
     """Corrélations (r + p-values), distributions, normalité et données manquantes."""
     session = _get_parsed_session_or_error(session_id)
-    result = advanced_stats(session.active_df(), correlation_method=method)
+    result = cache.get_or_compute(
+        cache.key(session_id, session.data_version, "advanced_stats", {"method": method}),
+        lambda: advanced_stats(session.active_df(), correlation_method=method),
+    )
+    result = dict(result)
     result["session_id"] = session_id
     result["filename"] = session.filename
     result["filtered"] = session.filtered_df is not None
@@ -962,7 +992,11 @@ def export_pivot(body: PivotExportRequest) -> Response:
 def get_detailed_profile(session_id: str) -> dict:
     """Profil par colonne, score de qualité, doublons, anomalies et suggestions."""
     session = _get_parsed_session_or_error(session_id)
-    result = detailed_profile(session.active_df())
+    result = cache.get_or_compute(
+        cache.key(session_id, session.data_version, "profile"),
+        lambda: detailed_profile(session.active_df()),
+    )
+    result = dict(result)
     result["session_id"] = session_id
     result["filename"] = session.filename
     result["filtered"] = session.filtered_df is not None

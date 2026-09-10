@@ -47,3 +47,6 @@ coverage/
 # Jeux de données de test générés (Phase 9) — volumineux, reproductibles via
 # backend/scripts/generate_test_data.py
 backend/test_data/
+
+# Jeux de données de test volumineux générés localement (Phase 10.1)
+backend/test_data/

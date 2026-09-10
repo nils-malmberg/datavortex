@@ -24,7 +24,14 @@ from app.stats_service import missing_analysis
 NUMERIC_TYPES = ("integer", "float")
 
 MAX_FUZZY_DISTINCT = 300
+# Au-delà de ce nombre de valeurs distinctes, une colonne texte est du texte
+# libre ou un identifiant, pas un jeu de libellés : l'analyse des variantes
+# d'écriture n'y a plus de sens (cf. `_inconsistent_formatting`).
+MAX_VARIANT_DISTINCT = 10_000
 MAX_ISOLATION_ROWS = 20_000
+# Au-delà de ce nombre de lignes, le profil détaillé est calculé sur un
+# échantillon aléatoire (cf. `detailed_profile`), et le signale dans sa réponse.
+PROFILE_SAMPLE_ROWS = 500_000
 MAX_OUTLIER_EXAMPLES = 10
 FUZZY_SIMILARITY = 0.86
 
@@ -54,6 +61,25 @@ def _normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", text).strip().casefold()
 
 
+def _normalize_series(values: pd.Series) -> pd.Series:
+    """`_normalize_text` appliqué à une série entière, sans appel Python par valeur.
+
+    Les accesseurs `.str` de pandas font le même travail dans une boucle C :
+    sur une colonne à forte cardinalité, c'est un ordre de grandeur de moins
+    qu'un `.map(_normalize_text)`. Le résultat est identique — vérifié par les
+    tests d'équivalence entre les deux implémentations.
+    """
+    return (
+        values.str.normalize("NFKD")
+        # Retirer les diacritiques : après NFKD ils sont des caractères
+        # combinants isolés, que cette plage Unicode couvre exactement.
+        .str.replace("[̀-ͯ]", "", regex=True)
+        .str.replace(r"\s+", " ", regex=True)
+        .str.strip()
+        .str.casefold()
+    )
+
+
 # --------------------------------------------------------------------------
 # Onglet « Profil »
 # --------------------------------------------------------------------------
@@ -78,7 +104,13 @@ def column_profile(series: pd.Series) -> dict[str, Any]:
     n_total = int(series.size)
     n_missing = int(series.isna().sum())
     n_present = n_total - n_missing
-    n_unique = int(series.nunique(dropna=True))
+
+    # Les effectifs par valeur distincte servent à la fois au mode, au top 8 et
+    # au nombre de valeurs distinctes : une seule passe de hachage pour les
+    # trois, au lieu d'un `nunique()` suivi d'un `value_counts()`.
+    non_null = series.dropna()
+    counts = non_null.astype(str).value_counts() if not non_null.empty else None
+    n_unique = int(counts.size) if counts is not None else 0
 
     profile: dict[str, Any] = {
         "type": col_type,
@@ -92,9 +124,7 @@ def column_profile(series: pd.Series) -> dict[str, Any]:
         "is_constant": bool(n_unique <= 1 and n_present > 0),
     }
 
-    non_null = series.dropna()
-    if not non_null.empty:
-        counts = non_null.astype(str).value_counts()
+    if counts is not None:
         profile["mode"] = counts.index[0]
         profile["mode_count"] = int(counts.iloc[0])
         profile["top_values"] = [{"value": v, "count": int(c)} for v, c in counts.head(8).items()]
@@ -141,47 +171,76 @@ def column_profile(series: pd.Series) -> dict[str, Any]:
 # Onglet « Qualité »
 # --------------------------------------------------------------------------
 
-def _type_mismatches(series: pd.Series, col_type: str) -> int:
+def string_value_counts(series: pd.Series) -> pd.Series:
+    """Effectifs par valeur distincte : base commune des contrôles textuels.
+
+    Les trois contrôles qui suivent posent des questions sur les *écritures*
+    présentes, pas sur les lignes. Les faire porter sur les valeurs distinctes
+    pondérées par leur effectif donne le même résultat en une seule passe de
+    hachage, là où chacun matérialisait auparavant sa propre copie en chaînes
+    de la colonne entière.
+    """
+    return series.dropna().astype(str).value_counts()
+
+
+def _folded_index(counts: pd.Series) -> pd.Index:
+    """Index des valeurs distinctes, espaces rognés et casse repliée."""
+    return pd.Index(counts.index).str.strip().str.lower()
+
+
+def _type_mismatches(series: pd.Series, col_type: str, counts: Optional[pd.Series] = None) -> int:
     """Valeurs non nulles incompatibles avec le type détecté de la colonne."""
-    non_null = series.dropna()
-    if non_null.empty:
-        return 0
     if col_type in NUMERIC_TYPES:
-        return int(pd.to_numeric(non_null, errors="coerce").isna().sum())
+        non_null = series.dropna()
+        return int(pd.to_numeric(non_null, errors="coerce").isna().sum()) if not non_null.empty else 0
     if col_type == "datetime":
-        return int(pd.to_datetime(non_null, errors="coerce").isna().sum())
+        non_null = series.dropna()
+        return int(pd.to_datetime(non_null, errors="coerce").isna().sum()) if not non_null.empty else 0
     if col_type == "boolean":
+        counts = string_value_counts(series) if counts is None else counts
+        if counts.empty:
+            return 0
         allowed = {"true", "false", "1", "0", "yes", "no", "oui", "non"}
-        return int((~non_null.astype(str).str.strip().str.lower().isin(allowed)).sum())
+        return int(counts[~_folded_index(counts).isin(allowed)].sum())
     return 0
 
 
-def _sentinel_count(series: pd.Series, col_type: str) -> int:
-    non_null = series.dropna()
-    if non_null.empty:
-        return 0
+def _sentinel_count(series: pd.Series, col_type: str, counts: Optional[pd.Series] = None) -> int:
     if col_type in NUMERIC_TYPES:
+        non_null = series.dropna()
+        if non_null.empty:
+            return 0
         numeric = pd.to_numeric(non_null, errors="coerce")
         return int(numeric.isin(list(SENTINEL_NUMBERS)).sum())
-    return int(non_null.astype(str).str.strip().str.lower().isin(SENTINEL_VALUES).sum())
+    counts = string_value_counts(series) if counts is None else counts
+    if counts.empty:
+        return 0
+    return int(counts[_folded_index(counts).isin(SENTINEL_VALUES)].sum())
 
 
-def _inconsistent_formatting(series: pd.Series, col_type: str) -> int:
-    """Valeurs textuelles qui ne diffèrent que par la casse ou les espaces."""
+def _inconsistent_formatting(series: pd.Series, col_type: str, counts: Optional[pd.Series] = None) -> int:
+    """Valeurs textuelles qui ne diffèrent que par la casse ou les espaces.
+
+    Travaille sur les valeurs *distinctes* et leurs effectifs, pas sur les
+    lignes : la question posée ne porte que sur les écritures présentes. La
+    version précédente parcourait chaque forme canonique en Python et y
+    relançait un `value_counts()` — un profil de 500 000 lignes y passait
+    quatre minutes, dont l'essentiel en surcoût pandas par groupe.
+    """
     if col_type != "string":
         return 0
-    non_null = series.dropna().astype(str)
-    if non_null.empty:
+    counts = string_value_counts(series) if counts is None else counts
+    if counts.empty or counts.size > MAX_VARIANT_DISTINCT:
+        # Au-delà de ce seuil, la colonne n'est pas un jeu de libellés mais du
+        # texte libre ou un identifiant : y chercher des « variantes d'écriture
+        # du même libellé » ne veut plus rien dire, et la normalisation de
+        # millions de valeurs distinctes coûte plus que tout le reste du profil.
         return 0
-    normalized = non_null.map(_normalize_text)
-    # Pour chaque forme canonique, tout ce qui n'est pas l'écriture majoritaire.
-    frame = pd.DataFrame({"raw": non_null, "norm": normalized})
-    inconsistent = 0
-    for _, group in frame.groupby("norm"):
-        variants = group["raw"].value_counts()
-        if variants.size > 1:
-            inconsistent += int(variants.iloc[1:].sum())
-    return inconsistent
+
+    normalized = _normalize_series(pd.Series(counts.index.to_numpy(), dtype="object"))
+    grouped = pd.DataFrame({"count": counts.to_numpy(), "norm": normalized.to_numpy()}).groupby("norm")["count"]
+    # Par forme canonique : tout ce qui n'est pas l'écriture majoritaire.
+    return int((grouped.sum() - grouped.max()).sum())
 
 
 def quality_report(df: pd.DataFrame) -> dict[str, Any]:
@@ -197,11 +256,19 @@ def quality_report(df: pd.DataFrame) -> dict[str, Any]:
     numeric_cells = 0
 
     per_column = []
+    column_types: dict[Any, str] = {}
+    text_cells = 0
     for col in df.columns:
         col_type = detect_column_type(df[col])
-        col_mismatch = _type_mismatches(df[col], col_type)
-        col_sentinel = _sentinel_count(df[col], col_type)
-        col_inconsistent = _inconsistent_formatting(df[col], col_type)
+        column_types[col] = col_type
+        # Une seule passe de hachage par colonne textuelle, partagée par les
+        # trois contrôles qui suivent (ils ne portent que sur les écritures).
+        counts = string_value_counts(df[col]) if col_type in ("string", "boolean") else None
+        if col_type == "string" and counts is not None:
+            text_cells += int(counts.sum())
+        col_mismatch = _type_mismatches(df[col], col_type, counts)
+        col_sentinel = _sentinel_count(df[col], col_type, counts)
+        col_inconsistent = _inconsistent_formatting(df[col], col_type, counts)
         col_extreme = 0
         if col_type in NUMERIC_TYPES:
             clean = pd.to_numeric(df[col], errors="coerce").dropna()
@@ -232,9 +299,8 @@ def quality_report(df: pd.DataFrame) -> dict[str, Any]:
     def pct(good: int, total: int) -> float:
         return round(good / total * 100, 2) if total else 100.0
 
-    text_cells = int(sum(
-        df[c].notna().sum() for c in df.columns if detect_column_type(df[c]) == "string"
-    ))
+    # `text_cells` est accumulé dans la boucle ci-dessus : le recalculer ici
+    # relançait une détection de type et un parcours complet par colonne.
 
     dimensions = {
         "completeness": {
@@ -641,6 +707,22 @@ def cleaning_suggestions(df: pd.DataFrame, quality: dict, duplicates: dict, anom
 # --------------------------------------------------------------------------
 
 def detailed_profile(df: pd.DataFrame) -> dict[str, Any]:
+    """Profil complet, calculé sur un échantillon au-delà de PROFILE_SAMPLE_ROWS.
+
+    Un profil complet sur 3,2 millions de lignes demandait une minute : passé
+    un certain volume, l'utilisateur conclut que l'application est bloquée et
+    quitte l'onglet avant la réponse. Les indicateurs du profil sont des
+    proportions (complétude, unicité, formes de distribution) qu'un échantillon
+    aléatoire estime fidèlement — c'est la stratégie des outils de profilage
+    établis. Le résultat porte `sampling`, et l'interface l'affiche : un chiffre
+    calculé sur un échantillon ne doit jamais être présenté comme exhaustif.
+    """
+    total_rows = int(df.shape[0])
+    sampled = total_rows > PROFILE_SAMPLE_ROWS
+    if sampled:
+        # Graine fixe : deux consultations du même onglet donnent le même profil.
+        df = df.sample(PROFILE_SAMPLE_ROWS, random_state=42).sort_index()
+
     quality = quality_report(df)
     duplicates = duplicate_report(df)
     anomalies = anomaly_report(df)
@@ -651,4 +733,9 @@ def detailed_profile(df: pd.DataFrame) -> dict[str, Any]:
         "anomalies": anomalies,
         "missing": missing_analysis(df),
         "suggestions": cleaning_suggestions(df, quality, duplicates, anomalies),
+        "sampling": {
+            "sampled": sampled,
+            "rows_analyzed": int(df.shape[0]),
+            "total_rows": total_rows,
+        },
     }
