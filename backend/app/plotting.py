@@ -1,9 +1,12 @@
 """Construction des figures Plotly pour les visualisations 1D/2D/3D (Phase 2)."""
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from scipy import stats as scipy_stats
 
 from app.errors import AppError, column_not_found
@@ -20,6 +23,46 @@ PALETTE = [
     "#4C78A8", "#F58518", "#54A24B", "#E45756", "#72B7B2",
     "#EECA3B", "#B279A2", "#FF9DA6", "#9D755D", "#BAB0AC",
 ]
+
+# Nombre maximal de points envoyés au navigateur pour une trace point à point.
+# Une figure Plotly transporte ses données brutes : un nuage de points sur
+# 3,2 millions de lignes pesait 36 Mo de JSON et bloquait l'onglet pendant sa
+# désérialisation, pour un résultat visuel identique — au-delà de quelques
+# dizaines de milliers de points superposés, l'œil ne distingue plus qu'une
+# tache uniforme. Réglable via DATAVORTEX_MAX_PLOT_POINTS.
+MAX_PLOT_POINTS = int(os.environ.get("DATAVORTEX_MAX_PLOT_POINTS", "50000"))
+
+# Types dont la trace transporte une valeur par ligne : ce sont les seuls
+# concernés. Un histogramme groupé ou une heatmap agrègent côté serveur et
+# n'envoient déjà que le résultat.
+POINT_BASED_TYPES = {
+    "scatter", "line", "area", "bubble", "scatter3d", "box", "violin", "histogram", "kde",
+    "joint", "strip", "violin_swarm", "ridge", "hexbin",
+}
+
+
+def plot_frame(df: pd.DataFrame, plot_type: str) -> tuple[pd.DataFrame, bool]:
+    """Échantillonne les données d'une figure point à point si nécessaire.
+
+    Renvoie le DataFrame à tracer et un booléen disant s'il a été réduit, pour
+    que la figure puisse l'annoncer : un graphique tracé sur un échantillon ne
+    doit jamais se présenter comme exhaustif.
+
+    L'échantillon est aléatoire à graine fixe — un tirage régulier (une ligne
+    sur N) donnerait un résultat trompeur sur des données déjà triées.
+    """
+    if plot_type not in POINT_BASED_TYPES or len(df) <= MAX_PLOT_POINTS:
+        return df, False
+    return df.sample(MAX_PLOT_POINTS, random_state=42).sort_index(), True
+
+
+def note_sampling(fig: go.Figure, total_rows: int) -> None:
+    """Mentionne l'échantillonnage sur la figure elle-même."""
+    fig.add_annotation(
+        text=f"Échantillon de {MAX_PLOT_POINTS:,} points sur {total_rows:,}".replace(",", " "),
+        xref="paper", yref="paper", x=1, y=1.04, showarrow=False,
+        font=dict(size=10, color="#64748b"), xanchor="right",
+    )
 
 
 def _require_columns(df: pd.DataFrame, columns: list[str]) -> None:
@@ -65,6 +108,8 @@ def _normalize_sizes(series: pd.Series) -> np.ndarray:
 
 def build_1d_figure(df: pd.DataFrame, req: Plot1DRequest) -> go.Figure:
     _require_columns(df, [req.column, req.group_by] if req.group_by else [req.column])
+    total_rows = len(df)
+    df, sampled = plot_frame(df, req.plot_type)
     bins = max(MIN_BINS, min(MAX_BINS, req.bins))
     fig = go.Figure()
 
@@ -135,6 +180,8 @@ def build_1d_figure(df: pd.DataFrame, req: Plot1DRequest) -> go.Figure:
     else:  # pragma: no cover - garanti par Literal côté Pydantic
         raise AppError(400, "UNKNOWN_PLOT_TYPE", f"Type de graphique 1D inconnu : {req.plot_type}")
 
+    if sampled:
+        note_sampling(fig, total_rows)
     return fig
 
 
@@ -159,6 +206,8 @@ def _grouped_traces(df: pd.DataFrame, x: str, y: str, color_by: str | None, mode
 
 
 def build_2d_figure(df: pd.DataFrame, req: Plot2DRequest) -> go.Figure:
+    total_rows = len(df)
+    df, sampled = plot_frame(df, req.plot_type)
     fig = go.Figure()
 
     if req.plot_type == "heatmap":
@@ -275,6 +324,8 @@ def build_2d_figure(df: pd.DataFrame, req: Plot2DRequest) -> go.Figure:
     else:  # pragma: no cover
         raise AppError(400, "UNKNOWN_PLOT_TYPE", f"Type de graphique 2D inconnu : {req.plot_type}")
 
+    if sampled:
+        note_sampling(fig, total_rows)
     return fig
 
 
@@ -284,6 +335,8 @@ def build_2d_figure(df: pd.DataFrame, req: Plot2DRequest) -> go.Figure:
 
 def build_3d_figure(df: pd.DataFrame, req: Plot3DRequest) -> go.Figure:
     _require_columns(df, [req.x, req.y, req.z, req.color_by])
+    total_rows = len(df)
+    df, sampled = plot_frame(df, req.plot_type)
     fig = go.Figure()
 
     if req.plot_type == "scatter3d":
@@ -330,6 +383,8 @@ def build_3d_figure(df: pd.DataFrame, req: Plot3DRequest) -> go.Figure:
     else:  # pragma: no cover
         raise AppError(400, "UNKNOWN_PLOT_TYPE", f"Type de graphique 3D inconnu : {req.plot_type}")
 
+    if sampled:
+        note_sampling(fig, total_rows)
     return fig
 
 
@@ -363,6 +418,10 @@ def build_multi_series_figure(df: pd.DataFrame, req: MultiSeriesPlotRequest) -> 
         _require_numeric(df, series.y_column)
 
     has_secondary = any(s.y_axis == "right" for s in req.series)
+    # La tendance ci-dessous est calculée sur `full_df` : un ajustement doit
+    # porter sur toutes les données, seul le tracé des points est échantillonné.
+    full_df, total_rows = df, len(df)
+    df, sampled = plot_frame(df, "scatter")
     fig = go.Figure()
 
     for i, series in enumerate(req.series):
@@ -394,6 +453,24 @@ def build_multi_series_figure(df: pd.DataFrame, req: MultiSeriesPlotRequest) -> 
                 marker=dict(color=color), yaxis=yaxis_ref,
             ))
 
+    # Courbe de tendance (Phase 10.1) : les options avancées s'appliquent
+    # désormais aussi au mode multi-séries. La tendance porte sur la première
+    # série tracée sur l'axe de gauche — celle que l'œil lit comme principale.
+    trend = getattr(req, "trend", None)
+    if trend is not None and trend.type != "none":
+        from app.plotting_service import _add_trend_traces, compute_trend
+
+        primary = next((s for s in req.series if s.y_axis == "left"), req.series[0])
+        pair = full_df[[req.x_axis, primary.y_column]].apply(pd.to_numeric, errors="coerce").dropna()
+        if len(pair) >= 3:
+            result = compute_trend(
+                pair[req.x_axis].to_numpy(dtype=float),
+                pair[primary.y_column].to_numpy(dtype=float),
+                trend, req.x_axis, primary.y_column,
+            )
+            if result:
+                _add_trend_traces(fig, result, PALETTE[3 % len(PALETTE)], trend.show_equation)
+
     layout: dict = {
         "title": _default_title(f"{req.x_axis} — {len(req.series)} série(s)", req.title),
         "xaxis": {"title": req.x_axis},
@@ -407,4 +484,113 @@ def build_multi_series_figure(df: pd.DataFrame, req: MultiSeriesPlotRequest) -> 
             "side": "right",
         }
     fig.update_layout(**layout)
+    _apply_common_style(fig, getattr(req, "style", None))
+    if sampled:
+        note_sampling(fig, total_rows)
+    return fig
+
+
+def _apply_common_style(fig: go.Figure, style) -> None:
+    """Options de présentation communes aux modes multi-séries et sous-graphiques.
+
+    Le mode « graphique simple » passe par `plotting_service.apply_style`, qui
+    gère en plus les axes, les échelles et les annotations d'une figure unique.
+    Ici, seules les options qui gardent un sens sur une figure à plusieurs
+    axes ou à plusieurs cases sont appliquées : imposer un titre d'axe Y unique
+    à une grille 3x3 n'en aurait aucun.
+    """
+    if style is None:
+        return
+    layout: dict = {
+        "showlegend": style.legend_position != "none",
+        "template": {"light": "plotly_white", "dark": "plotly_dark"}.get(style.theme, "none"),
+    }
+    if style.title:
+        layout["title"] = style.title
+    fig.update_layout(**layout)
+    fig.update_xaxes(showgrid=style.grid)
+    fig.update_yaxes(showgrid=style.grid)
+
+
+# --------------------------------------------------------------------------
+# Grille de sous-graphiques (Phase 10.1)
+# --------------------------------------------------------------------------
+
+def _subplot_trace(df: pd.DataFrame, spec, color: str):
+    """Trace unique d'une case de la grille, selon son type."""
+    if spec.plot_type in ("histogram", "box", "violin"):
+        # Ces types ne décrivent qu'une seule variable : Y s'il est renseigné,
+        # X sinon, pour que l'utilisateur n'ait pas à deviner lequel remplir.
+        column = spec.y or spec.x
+        if not column:
+            raise AppError(400, "MISSING_COLUMN", "Chaque sous-graphique doit désigner une colonne.")
+        _require_columns(df, [column])
+        _require_numeric(df, column)
+        values = _numeric_series(df, column)
+        if spec.plot_type == "histogram":
+            return go.Histogram(x=values, name=column, marker_color=color)
+        if spec.plot_type == "box":
+            return go.Box(y=values, name=column, marker_color=color)
+        return go.Violin(y=values, name=column, marker_color=color, box_visible=True, meanline_visible=True)
+
+    if not spec.x or not spec.y:
+        raise AppError(400, "MISSING_AXIS", "Un sous-graphique X/Y demande une colonne X et une colonne Y.")
+    _require_columns(df, [spec.x, spec.y])
+    _require_numeric(df, spec.y)
+
+    if spec.plot_type == "bar":
+        # Un bar chart agrège : tracer une barre par ligne empilerait des
+        # millions de barres au même endroit — illisible, et plusieurs dizaines
+        # de mégaoctets de JSON pour un résultat que l'œil lit comme une seule
+        # barre. La moyenne par modalité est ce qu'on attend d'un tel graphique.
+        grouped = df.groupby(spec.x, dropna=True)[spec.y].mean().head(MAX_CATEGORIES)
+        return go.Bar(x=grouped.index.tolist(), y=grouped.to_numpy().tolist(),
+                      name=f"Moyenne de {spec.y}", marker_color=color)
+
+    ordered = df.sort_values(by=spec.x) if spec.plot_type in ("line", "area") else df
+    if spec.plot_type == "area":
+        return go.Scatter(x=ordered[spec.x], y=ordered[spec.y], name=spec.y, mode="lines",
+                          fill="tozeroy", line=dict(color=color))
+    if spec.plot_type == "line":
+        return go.Scatter(x=ordered[spec.x], y=ordered[spec.y], name=spec.y, mode="lines",
+                          line=dict(color=color))
+    return go.Scatter(x=ordered[spec.x], y=ordered[spec.y], name=spec.y, mode="markers",
+                      marker=dict(color=color))
+
+
+def build_subplot_figure(df: pd.DataFrame, req) -> go.Figure:
+    """Grille de sous-graphiques indépendants (2x2, 3x3, …).
+
+    Chaque case a ses propres colonnes et son propre type : c'est ce qui
+    distingue ce mode du multi-séries, où toutes les séries partagent l'axe X.
+    """
+    if len(req.subplots) > req.rows * req.cols:
+        raise AppError(
+            400, "TOO_MANY_SUBPLOTS",
+            f"{len(req.subplots)} sous-graphiques ne tiennent pas dans une grille {req.rows}x{req.cols}.",
+        )
+
+    titles = [spec.title or f"Graphique {i + 1}" for i, spec in enumerate(req.subplots)]
+    fig = make_subplots(rows=req.rows, cols=req.cols, subplot_titles=titles)
+
+    sampled_any = False
+    for index, spec in enumerate(req.subplots):
+        color = spec.color or PALETTE[index % len(PALETTE)]
+        case_df, case_sampled = plot_frame(df, spec.plot_type)
+        sampled_any = sampled_any or case_sampled
+        trace = _subplot_trace(case_df, spec, color)
+        fig.add_trace(trace, row=index // req.cols + 1, col=index % req.cols + 1)
+        if spec.x and spec.plot_type not in ("histogram", "box", "violin"):
+            fig.update_xaxes(title_text=spec.x, row=index // req.cols + 1, col=index % req.cols + 1)
+        if spec.y:
+            fig.update_yaxes(title_text=spec.y, row=index // req.cols + 1, col=index % req.cols + 1)
+
+    fig.update_layout(
+        title=req.title or f"Grille {req.rows}x{req.cols}",
+        showlegend=False,  # chaque case porte déjà son titre : la légende ferait doublon
+        height=max(400, 280 * req.rows),
+    )
+    _apply_common_style(fig, getattr(req, "style", None))
+    if sampled_any:
+        note_sampling(fig, len(df))
     return fig

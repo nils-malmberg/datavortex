@@ -87,6 +87,7 @@ from app.models import (
     RegressionRequest,
     StatsExportRequest,
     StreamExportRequest,
+    SubplotGridRequest,
     TrainingScriptRequest,
     UploadResponse,
 )
@@ -100,7 +101,13 @@ from app.parsing import (
     parse_json,
 )
 from app.pivot_service import run_pivot
-from app.plotting import build_1d_figure, build_2d_figure, build_3d_figure, build_multi_series_figure
+from app.plotting import (
+    build_1d_figure,
+    build_2d_figure,
+    build_3d_figure,
+    build_multi_series_figure,
+    build_subplot_figure,
+)
 from app.plotting_service import build_advanced_figure
 from app.profile_service import detailed_profile
 from app.profiling import profile_operation
@@ -560,11 +567,23 @@ def plot_multi_series(body: MultiSeriesPlotRequest) -> dict:
     return {"figure": _figure_to_response(fig)}
 
 
+@app.post("/api/plot/subplots")
+def plot_subplots(body: SubplotGridRequest) -> dict:
+    """Grille de sous-graphiques indépendants (Phase 10.1)."""
+    session = _get_parsed_session_or_error(body.session_id)
+    fig = build_subplot_figure(session.active_df(), body)
+    return {"figure": _figure_to_response(fig)}
+
+
 _PLOT_BUILDERS = {
     "1d": (Plot1DRequest, build_1d_figure),
     "2d": (Plot2DRequest, build_2d_figure),
     "3d": (Plot3DRequest, build_3d_figure),
     "advanced": (AdvancedPlotRequest, lambda df, params: build_advanced_figure(df, params)["figure"]),
+    # Phase 10.1 : les trois modes de l'atelier de visualisation s'exportent
+    # par le même chemin, sans quoi « Exporter » disparaîtrait en multi-séries.
+    "multi-series": (MultiSeriesPlotRequest, build_multi_series_figure),
+    "subplots": (SubplotGridRequest, build_subplot_figure),
 }
 
 

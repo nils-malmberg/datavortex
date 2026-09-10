@@ -18,6 +18,7 @@ from scipy import stats as sps
 from app.errors import AppError, column_not_found
 from app.models import OverlaySpec, StyleSpec, TrendSpec
 from app.parsing import detect_column_type
+from app.plotting import note_sampling, plot_frame
 
 MAX_CATEGORIES = 20
 MAX_PAIR_COLUMNS = 8
@@ -860,6 +861,12 @@ def build_advanced_figure(df: pd.DataFrame, req) -> dict[str, Any]:
     colorscale = resolve_colorscale(style)
     trend_stats = None
 
+    # `full_df` reste la référence pour tout ce qui *calcule* (tendance, repères
+    # statistiques) ; seul le tracé point à point est échantillonné, pour ne pas
+    # envoyer des dizaines de mégaoctets de JSON au navigateur.
+    full_df, total_rows = df, len(df)
+    df, sampled = plot_frame(df, req.plot_type)
+
     if req.plot_type == "violin_swarm":
         fig, title, x_title, y_title = _build_violin_swarm(df, req, palette), \
             f"Violin + observations : {req.y}", req.group_by or "", req.y
@@ -886,7 +893,7 @@ def build_advanced_figure(df: pd.DataFrame, req) -> dict[str, Any]:
                 f"Une courbe de tendance ne s'applique pas à un graphique « {req.plot_type} ». "
                 f"Types compatibles : {', '.join(sorted(TREND_COMPATIBLE))}.",
             )
-        x_values, y_values = _xy_pairs(df, req.x, req.y)
+        x_values, y_values = _xy_pairs(full_df, req.x, req.y)
         result = compute_trend(x_values, y_values, req.trend, req.x, req.y)
         if result:
             _add_trend_traces(fig, result, palette[3 % len(palette)], req.trend.show_equation)
@@ -905,7 +912,7 @@ def build_advanced_figure(df: pd.DataFrame, req) -> dict[str, Any]:
     if any([overlays.mean, overlays.median, overlays.std, overlays.percentiles]):
         target = req.y if req.y and _is_numeric(df, req.y) else (req.x if req.x and _is_numeric(df, req.x) else None)
         if target:
-            values = pd.to_numeric(df[target], errors="coerce").dropna().to_numpy(dtype=float)
+            values = pd.to_numeric(full_df[target], errors="coerce").dropna().to_numpy(dtype=float)
             axis = "x" if req.plot_type in OVERLAY_ON_X else "y"
             _add_overlays(fig, values, overlays, axis)
 
@@ -921,4 +928,6 @@ def build_advanced_figure(df: pd.DataFrame, req) -> dict[str, Any]:
         # Ces figures gèrent leurs propres axes : on n'impose que le titre.
         fig.update_layout(title=style.title or title)
 
+    if sampled:
+        note_sampling(fig, total_rows)
     return {"figure": fig, "trend": trend_stats, "palette": palette}

@@ -36,10 +36,17 @@ from app.models import (
     Plot1DRequest,
     Plot2DRequest,
     Plot3DRequest,
+    SubplotGridRequest,
 )
 from app.parsing import detect_column_types
 from app.pivot_service import run_pivot
-from app.plotting import build_1d_figure, build_2d_figure, build_3d_figure, build_multi_series_figure
+from app.plotting import (
+    build_1d_figure,
+    build_2d_figure,
+    build_3d_figure,
+    build_multi_series_figure,
+    build_subplot_figure,
+)
 from app.plotting_service import build_advanced_figure
 from app.profile_service import detailed_profile
 from app.stats import dataframe_summary
@@ -53,6 +60,7 @@ _PLOT_BUILDERS = {
     "3d": (Plot3DRequest, build_3d_figure),
     "advanced": (AdvancedPlotRequest, lambda df, params: build_advanced_figure(df, params)["figure"]),
     "multi-series": (MultiSeriesPlotRequest, build_multi_series_figure),
+    "subplots": (SubplotGridRequest, build_subplot_figure),
 }
 
 # Chaque runner ML prend (df, params_dict) et retourne un dict avec une clé

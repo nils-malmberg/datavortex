@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getPreview, plotAdvanced } from '../api/client'
+import { getPreview, plotAdvanced, plotMultiSeries, plotSubplots } from '../api/client'
 import ThemedPlot, { capturePlotThumbnail } from './ui/ThemedPlot'
 import ExportPlot from './ExportPlot'
 import PlotSidebar from './plot/PlotSidebar'
 import PlotStylePanel from './plot/PlotStylePanel'
 import PlotGallery from './plot/PlotGallery'
+import MultiSeriesEditor, { makeSeries } from './plot/MultiSeriesEditor'
+import SubplotsEditor, { makeSubplot } from './plot/SubplotsEditor'
 import useToast from './ui/ToastProvider'
 import { BUTTON_CLASS, Badge, ErrorBox, Loading, PRIMARY_BUTTON_CLASS } from './ui/common'
 import {
   DEFAULT_SPEC,
+  LAYOUT_MODES,
+  buildMultiSeriesPayload,
   buildPayload,
+  buildSubplotsPayload,
   describeSpec,
   isSpecComplete,
   plotConfig,
@@ -138,14 +143,21 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
       setError(null)
       return
     }
-    const payload = buildPayload(spec)
+    // Un mode = une route et une charge utile ; le reste de l'atelier (aperçu,
+    // export, historique, presets) ne fait aucune différence entre les trois.
+    const request = {
+      multi_series: () => [buildMultiSeriesPayload(spec), plotMultiSeries],
+      subplots: () => [buildSubplotsPayload(spec), plotSubplots],
+    }[spec.layout_mode]
+    const [payload, call] = request ? request() : [buildPayload(spec), plotAdvanced]
+
     setIsLoading(true)
     setError(null)
     const timer = setTimeout(async () => {
       try {
-        const { data } = await plotAdvanced(sessionId, payload)
+        const { data } = await call(sessionId, payload)
         setFigure(data.figure)
-        setTrendStats(data.trend)
+        setTrendStats(data.trend ?? null)
         setLastPayload(payload)
       } catch (err) {
         setError(err?.response?.data?.error?.message || 'Impossible de générer ce graphique.')
@@ -158,6 +170,35 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(spec), sessionId, refreshKey, columns.length])
+
+  /** Bascule de mode, en amorçant la configuration propre au mode visé.
+   *
+   * Sans amorçage, arriver en multi-séries ou en grille afficherait un panneau
+   * vide : l'utilisateur doit d'abord tout construire avant de voir quoi que
+   * ce soit. On part donc des colonnes numériques déjà choisies pour le mode
+   * simple, ce qui donne un aperçu dès le changement de mode.
+   */
+  const switchLayoutMode = useCallback(
+    (mode) => {
+      if (mode === (spec.layout_mode || 'single')) return
+      const patch = { layout_mode: mode }
+      if (mode === 'multi_series' && (spec.series || []).length === 0) {
+        const seed = spec.y || numericColumns[0]
+        patch.x = spec.x || columns[0] || ''
+        patch.series = seed ? [makeSeries(seed, 0)] : []
+      }
+      if (mode === 'subplots' && (spec.subplots || []).length === 0) {
+        const grid = spec.subplot_grid || { rows: 2, cols: 2 }
+        const x = spec.x || columns[0] || ''
+        patch.subplots = Array.from({ length: grid.rows * grid.cols }, (_, i) =>
+          makeSubplot(i, { x, y: numericColumns[i % Math.max(1, numericColumns.length)] || '' }),
+        )
+      }
+      setSpec({ ...spec, ...patch })
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(spec), columns, numericColumns, setSpec],
+  )
 
   // --- Presets --------------------------------------------------------------
   const handleSavePreset = (name) => {
@@ -227,22 +268,69 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
 
   if (columns.length === 0) return <Loading>Chargement des colonnes…</Loading>
 
+  const layoutMode = spec.layout_mode || 'single'
+  // `kind` attendu par /api/export/plot et /api/report/pdf pour ce mode.
+  const exportKind = { multi_series: 'multi-series', subplots: 'subplots' }[layoutMode] || 'advanced'
   const config = plotConfig(spec.plot_type)
-  const missingFields = config.required.filter((f) => {
-    const v = spec[f]
-    return v === '' || v === undefined || v === null || (Array.isArray(v) && v.length === 0)
-  })
+  const missingFields =
+    layoutMode === 'single'
+      ? config.required.filter((f) => {
+          const v = spec[f]
+          return v === '' || v === undefined || v === null || (Array.isArray(v) && v.length === 0)
+        })
+      : isSpecComplete(spec)
+        ? []
+        : [layoutMode === 'multi_series' ? 'un axe X et au moins une série complète' : 'les colonnes de chaque case']
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Sélecteur de disposition : les trois modes de tracé vivent dans cet
+          onglet, plutôt que dans des onglets séparés qui dupliquaient les
+          options et laissaient l'utilisateur chercher où créer son graphique. */}
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-900">
+        <span className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Disposition
+        </span>
+        {LAYOUT_MODES.map((mode) => (
+          <button
+            key={mode.value}
+            onClick={() => switchLayoutMode(mode.value)}
+            title={mode.hint}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              layoutMode === mode.value
+                ? 'bg-blue-600 text-white dark:bg-blue-500'
+                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+            }`}
+          >
+            {mode.label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-col gap-4 lg:flex-row">
-        <PlotSidebar
-          spec={spec}
-          onChange={setSpec}
-          columns={columns}
-          numericColumns={numericColumns}
-          categoricalColumns={categoricalColumns}
-        />
+        {layoutMode === 'multi_series' ? (
+          <MultiSeriesEditor
+            spec={spec}
+            onChange={setSpec}
+            columns={columns}
+            numericColumns={numericColumns}
+          />
+        ) : layoutMode === 'subplots' ? (
+          <SubplotsEditor
+            spec={spec}
+            onChange={setSpec}
+            columns={columns}
+            numericColumns={numericColumns}
+          />
+        ) : (
+          <PlotSidebar
+            spec={spec}
+            onChange={setSpec}
+            columns={columns}
+            numericColumns={numericColumns}
+            categoricalColumns={categoricalColumns}
+          />
+        )}
 
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           {missingFields.length > 0 ? (
@@ -285,7 +373,7 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
             </button>
             <ExportPlot
               sessionId={sessionId}
-              kind="advanced"
+              kind={exportKind}
               params={lastPayload}
               disabled={!figure || isLoading}
               compact
@@ -303,7 +391,7 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
                 onClick={() =>
                   onAddToReport({
                     id: crypto.randomUUID(),
-                    kind: 'advanced',
+                    kind: exportKind,
                     params: lastPayload,
                     label: describeSpec(spec),
                   })

@@ -18,7 +18,6 @@ import { BUTTON_CLASS, Loading, PRIMARY_BUTTON_CLASS } from './ui/common'
  */
 const StatsPanel = lazy(() => import('./StatsPanel'))
 const PlotBuilder = lazy(() => import('./PlotBuilder'))
-const MultiGraphDashboard = lazy(() => import('./MultiGraphDashboard'))
 const FilterBuilder = lazy(() => import('./FilterBuilder'))
 const ColumnsPanel = lazy(() => import('./ColumnsPanel'))
 const GroupByAnalysis = lazy(() => import('./GroupByAnalysis'))
@@ -31,7 +30,6 @@ const ExportData = lazy(() => import('./ExportData'))
 const TABS = [
   { value: 'stats', label: 'Stats' },
   { value: 'plots', label: 'Visualisations' },
-  { value: 'multiplot', label: 'Multi-graphiques' },
   { value: 'filters', label: 'Filtres' },
   { value: 'columns', label: 'Colonnes' },
   { value: 'groupby', label: 'Groupby' },
@@ -310,7 +308,6 @@ export default function Dashboard({ parseResult, filename, onReset, onInfoChange
         <Suspense fallback={<Loading>Chargement du panneau…</Loading>}>
           {activeTab === 'stats' && <StatsPanel {...panelProps} />}
           {activeTab === 'plots' && <PlotBuilder {...panelProps} onAddToReport={handleAddPlotToReport} />}
-          {activeTab === 'multiplot' && <MultiGraphDashboard {...panelProps} />}
           {activeTab === 'filters' && (
             <FilterBuilder sessionId={sessionId} onFilterApplied={bumpDataVersion} />
           )}

@@ -145,7 +145,49 @@ export const LEGEND_POSITIONS = [
   { value: 'none', label: 'Masquée' },
 ]
 
+// Modes de disposition de l'atelier (Phase 10.1). Ils vivent dans le même
+// `spec` que le reste de la configuration : l'historique, les presets et le
+// partage de configuration fonctionnent ainsi dans les trois modes sans
+// traitement particulier.
+export const LAYOUT_MODES = [
+  { value: 'single', label: '📊 Graphique simple', hint: 'Un seul graphique, tous les types et toutes les options.' },
+  { value: 'multi_series', label: '📈 Multi-séries', hint: 'Plusieurs colonnes Y sur le même axe X, avec axe Y secondaire optionnel.' },
+  { value: 'subplots', label: '🔲 Grille', hint: 'Plusieurs graphiques indépendants disposés en grille.' },
+]
+
+export const SERIES_PLOT_TYPES = [
+  { value: 'scatter', label: 'Nuage de points' },
+  { value: 'line', label: 'Ligne' },
+  { value: 'bar', label: 'Barres' },
+  { value: 'area', label: 'Aire' },
+]
+
+export const SUBPLOT_TYPES = [
+  ...SERIES_PLOT_TYPES,
+  { value: 'histogram', label: 'Histogramme' },
+  { value: 'box', label: 'Box plot' },
+  { value: 'violin', label: 'Violin plot' },
+]
+
+// Types ne portant qu'une variable : l'éditeur n'y demande pas de colonne X.
+export const SINGLE_VARIABLE_TYPES = ['histogram', 'box', 'violin']
+
+export const GRID_PRESETS = [
+  { rows: 1, cols: 2 },
+  { rows: 2, cols: 2 },
+  { rows: 2, cols: 3 },
+  { rows: 3, cols: 3 },
+  { rows: 4, cols: 2 },
+]
+
+export const MAX_SERIES = 10
+export const MAX_GRID_SIDE = 4
+
 export const DEFAULT_SPEC = {
+  layout_mode: 'single',
+  series: [],
+  subplot_grid: { rows: 2, cols: 2 },
+  subplots: [],
   plot_type: 'scatter',
   x: '',
   y: '',
@@ -190,7 +232,55 @@ export function buildPayload(spec) {
   return payload
 }
 
+/** Charge utile du mode multi-séries : mêmes options avancées que le mode simple. */
+export function buildMultiSeriesPayload(spec) {
+  return {
+    title: spec.style?.title || undefined,
+    x_axis: spec.x,
+    series: (spec.series || []).map((s) => ({
+      y_column: s.y_column,
+      y_axis: s.y_axis,
+      plot_type: s.plot_type,
+      name: s.name || undefined,
+      color: s.color || undefined,
+    })),
+    trend: spec.trend,
+    style: spec.style,
+  }
+}
+
+/** Charge utile du mode grille : une configuration par case. */
+export function buildSubplotsPayload(spec) {
+  const { rows, cols } = spec.subplot_grid
+  return {
+    title: spec.style?.title || undefined,
+    rows,
+    cols,
+    subplots: (spec.subplots || []).slice(0, rows * cols).map((s) => ({
+      plot_type: s.plot_type,
+      x: SINGLE_VARIABLE_TYPES.includes(s.plot_type) ? undefined : s.x || undefined,
+      y: s.y || undefined,
+      title: s.title || undefined,
+      color: s.color || undefined,
+    })),
+    style: spec.style,
+  }
+}
+
+function isSubplotComplete(subplot) {
+  if (!subplot.y) return false
+  return SINGLE_VARIABLE_TYPES.includes(subplot.plot_type) ? true : Boolean(subplot.x)
+}
+
 export function isSpecComplete(spec) {
+  if (spec.layout_mode === 'multi_series') {
+    return Boolean(spec.x) && (spec.series || []).length > 0 && spec.series.every((s) => s.y_column)
+  }
+  if (spec.layout_mode === 'subplots') {
+    const { rows, cols } = spec.subplot_grid
+    const active = (spec.subplots || []).slice(0, rows * cols)
+    return active.length > 0 && active.every(isSubplotComplete)
+  }
   return plotConfig(spec.plot_type).required.every((field) => {
     const value = spec[field]
     return !(value === '' || value === undefined || value === null || (Array.isArray(value) && value.length === 0))
@@ -198,6 +288,14 @@ export function isSpecComplete(spec) {
 }
 
 export function describeSpec(spec) {
+  if (spec.layout_mode === 'multi_series') {
+    const names = (spec.series || []).map((s) => s.name || s.y_column).filter(Boolean)
+    return `Multi-séries — ${names.join(', ') || '…'} vs ${spec.x || '…'}`
+  }
+  if (spec.layout_mode === 'subplots') {
+    const { rows, cols } = spec.subplot_grid
+    return `Grille ${rows}x${cols}`
+  }
   const label = plotConfig(spec.plot_type).label
   if (spec.y && spec.x) return `${label} — ${spec.y} vs ${spec.x}`
   if (spec.y) return `${label} — ${spec.y}`

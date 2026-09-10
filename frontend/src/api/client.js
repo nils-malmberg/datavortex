@@ -37,10 +37,17 @@ export function plot3D(sessionId, params) {
   return api.post('/plot/3d', { session_id: sessionId, ...params })
 }
 
-// --- Graphiques multi-séries à double axe Y (Phase 10) -------------------------
+// --- Multi-séries et grilles de sous-graphiques (Phases 10 / 10.1) -------------
 
-export function plotMultiSeries(sessionId, { title, xAxis, series }) {
-  return api.post('/plot/multi-series', { session_id: sessionId, title, x_axis: xAxis, series })
+// Ces deux routes reçoivent la charge utile telle que la construit
+// `plotCatalog` (déjà en snake_case, comme celle de /plot/advanced) : la même
+// valeur peut ainsi être renvoyée à /export/plot et /report/pdf sans traduction.
+export function plotMultiSeries(sessionId, payload) {
+  return api.post('/plot/multi-series', { session_id: sessionId, ...payload })
+}
+
+export function plotSubplots(sessionId, payload) {
+  return api.post('/plot/subplots', { session_id: sessionId, ...payload })
 }
 
 export function exportPlot(sessionId, kind, params, format, { width = 900, height = 600 } = {}) {

@@ -94,11 +94,42 @@ class MultiSeriesPlotRequest(BaseModel):
     title: Optional[str] = None
     x_axis: str
     series: list[SeriesSpec] = Field(..., min_length=1, max_length=10)
+    # Options avancées communes à tous les modes de tracé (Phase 10.1) :
+    # définies plus bas, elles sont rattachées après la déclaration de StyleSpec.
+    trend: Optional["TrendSpec"] = None
+    style: Optional["StyleSpec"] = None
+
+
+# --- Grille de sous-graphiques (Phase 10.1) -----------------------------------
+
+SubplotType = Literal["scatter", "line", "bar", "area", "histogram", "box", "violin"]
+
+# Une grille au-delà de 4x4 produit des cases trop petites pour être lues, et
+# autant de traces à sérialiser : la borne est autant ergonomique que technique.
+MAX_SUBPLOT_ROWS = 4
+MAX_SUBPLOT_COLS = 4
+
+
+class SubplotSpec(BaseModel):
+    plot_type: SubplotType = "scatter"
+    x: Optional[str] = None
+    y: Optional[str] = None
+    title: Optional[str] = None
+    color: Optional[str] = None
+
+
+class SubplotGridRequest(BaseModel):
+    session_id: str
+    title: Optional[str] = None
+    rows: int = Field(2, ge=1, le=MAX_SUBPLOT_ROWS)
+    cols: int = Field(2, ge=1, le=MAX_SUBPLOT_COLS)
+    subplots: list[SubplotSpec] = Field(..., min_length=1, max_length=MAX_SUBPLOT_ROWS * MAX_SUBPLOT_COLS)
+    style: Optional["StyleSpec"] = None
 
 
 class ExportPlotRequest(BaseModel):
     session_id: str
-    kind: Literal["1d", "2d", "3d", "ml", "advanced"]
+    kind: Literal["1d", "2d", "3d", "ml", "advanced", "multi-series", "subplots"]
     params: dict
     format: Literal["png", "svg", "html"]
     width: int = 900
@@ -155,7 +186,7 @@ ReportSection = Literal["summary", "stats", "preview", "plots", "correlations", 
 
 
 class ReportPlotSpec(BaseModel):
-    kind: Literal["1d", "2d", "3d", "ml", "advanced", "groupby", "pivot", "multi-series"]
+    kind: Literal["1d", "2d", "3d", "ml", "advanced", "groupby", "pivot", "multi-series", "subplots"]
     params: dict
     title: Optional[str] = None
 
@@ -354,6 +385,13 @@ class AdvancedPlotRequest(BaseModel):
     trend: TrendSpec = TrendSpec()
     overlays: OverlaySpec = OverlaySpec()
     style: StyleSpec = StyleSpec()
+
+
+# Les modèles multi-séries et sous-graphiques sont déclarés avant TrendSpec et
+# StyleSpec (ils appartiennent à la section « visualisation ») et les
+# référencent par leur nom : Pydantic v2 ne résout ces références qu'ici.
+MultiSeriesPlotRequest.model_rebuild()
+SubplotGridRequest.model_rebuild()
 
 
 # --- Filtres avancés (Phase 8) -------------------------------------------------
