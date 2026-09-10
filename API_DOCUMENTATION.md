@@ -37,7 +37,7 @@ Il n'y a pas de rate limiting (usage local mono-utilisateur).
 
 | Route | Description |
 |---|---|
-| `GET /api/health` | État du serveur : empreinte mémoire (`memory.rss_mb`), durée de fonctionnement, tâches de fond en cours, disponibilité de Polars. |
+| `GET /api/health` | État du serveur : empreinte mémoire (`memory.rss_mb`), durée de fonctionnement, tâches de fond en cours, statistiques du cache (`cache.hit_rate`), disponibilité de Polars. |
 | `POST /api/upload` | Upload d'un fichier (`multipart/form-data`, champ `file`). Détecte le format depuis l'extension — CSV, CSV.GZ/BZ2/ZIP, Parquet (toute compression interne), Feather, Excel, JSON (Phase 10) — l'encoding et, pour un CSV, propose un séparateur. Retourne un `session_id`, `format` (ex: `"csv_gz"`) et `file_info` (taille, compression, taille décompressée estimée). |
 | `POST /api/parse` | Parse définitivement la session avec le séparateur choisi (`{session_id, separator}`). Retourne `n_rows`, `n_columns`, `columns`, `column_types`, et `metrics` (durée, débit, moteur d'analyse retenu : `polars`, `pandas-c` ou `pandas-python`). Sans objet pour Parquet/Feather/Excel/JSON, déjà analysés à l'upload (`already_parsed: true`). |
 | `DELETE /api/session/{session_id}` | Libère une session (données + modèles ML entraînés associés). |
@@ -63,7 +63,7 @@ Il n'y a pas de rate limiting (usage local mono-utilisateur).
 | `GET /api/stats/{session_id}` | Statistiques descriptives par colonne. |
 | `GET /api/column/{session_id}/{col_name}/stats` | Statistiques détaillées d'une seule colonne. |
 | `GET /api/stats/{session_id}/advanced?method=pearson` | Corrélations avec p-values (`pearson`/`spearman`/`kendall`) et analyse de distribution. |
-| `GET /api/profile/{session_id}/detailed` | Score de qualité, anomalies, données manquantes, suggestions. |
+| `GET /api/profile/{session_id}/detailed` | Score de qualité, anomalies, données manquantes, suggestions. Au-delà de 500 000 lignes, calculé sur un échantillon aléatoire : la réponse porte alors `sampling: {sampled, rows_analyzed, total_rows}` (Phase 10.1). |
 | `POST /api/stats/export` | Exporte un tableau de stats (`StatsExportRequest` : `table: "summary"|"correlations"|"distributions"|"missing"`, `format: "csv"|"excel"|"latex"`). |
 | `POST /api/stats/hypothesis_test` | Tests d'hypothèse / ANOVA / corrélation / ajustement (`HypothesisTestRequest`, voir aide intégrée pour le détail des `test` disponibles par `family`). |
 
@@ -75,8 +75,9 @@ Il n'y a pas de rate limiting (usage local mono-utilisateur).
 | `POST /api/plot/2d` | Graphique 2D (`Plot2DRequest` : `x`, `y`, `plot_type`, `color_by`, `size_by`). |
 | `POST /api/plot/3d` | Graphique 3D (`Plot3DRequest` : `x`, `y`, `z`, `plot_type`). |
 | `POST /api/plot/advanced` | Graphiques avancés (`AdvancedPlotRequest`) : types étendus (pair/joint/ridge/strip…), `trend` (tendance + confiance), `overlays` (moyenne/médiane/écart-type), `style` (palette, daltonisme, annotations, thème). |
-| `POST /api/export/plot` | Exporte un graphique déjà généré (`ExportPlotRequest` : `kind`, `params` du graphique d'origine, `format: "png"|"svg"|"html"`). |
-| `POST /api/plot/multi-series` | Graphique multi-séries à axe Y secondaire optionnel (Phase 10) : `MultiSeriesPlotRequest` — `x_axis`, `series: [{y_column, y_axis: "left"|"right", plot_type: "scatter"|"line"|"bar"|"area", name, color}]` (1 à 10 séries). Utilisable comme `kind: "multi-series"` dans `POST /api/report/pdf`. |
+| `POST /api/export/plot` | Exporte un graphique déjà généré (`ExportPlotRequest` : `kind` parmi `1d`/`2d`/`3d`/`ml`/`advanced`/`multi-series`/`subplots`, `params` du graphique d'origine, `format: "png"|"svg"|"html"`). |
+| `POST /api/plot/multi-series` | Graphique multi-séries à axe Y secondaire optionnel (Phase 10) : `MultiSeriesPlotRequest` — `x_axis`, `series: [{y_column, y_axis: "left"|"right", plot_type: "scatter"|"line"|"bar"|"area", name, color}]` (1 à 10 séries), plus `trend` et `style` comme `/plot/advanced` (Phase 10.1). |
+| `POST /api/plot/subplots` | Grille de sous-graphiques indépendants (Phase 10.1) : `SubplotGridRequest` — `rows`/`cols` (1 à 4), `subplots: [{plot_type, x, y, title, color}]`, `style`. Les types `histogram`/`box`/`violin` ne demandent qu'une colonne (`y`) ; `bar` agrège par modalité. |
 
 ## GroupBy & Pivot
 
@@ -182,11 +183,26 @@ de décompression) : la taille décompressée d'un CSV compressé est bornée pa
 `DATAVORTEX_MAX_DECOMPRESSED_MB`, vérifiée en flux (sans jamais matérialiser
 plus que la limite en mémoire) plutôt qu'après coup.
 
-## Variables d'environnement (Phase 9-10)
+## Cache de résultats (Phase 10.1)
+
+Les routes coûteuses et idempotentes — `GET /api/stats/{id}`,
+`GET /api/stats/{id}/advanced`, `GET /api/profile/{id}/detailed` et les
+propriétés de tableau de `GET /api/data/{id}/rows` — servent leur résultat
+depuis un cache mémoire. Sur un fichier de 200 Mo, un profil détaillé passe de
+10 s à 4 ms au deuxième appel.
+
+La clé contient un numéro de version des données, incrémenté à chaque
+modification de la session (filtre, colonne calculée, transformation,
+suppression de colonne, nouveau parsing) : un résultat calculé avant un filtre
+n'est jamais servi après. `GET /api/health` remonte `cache: {entries, hits,
+misses, hit_rate}`, et la fermeture d'une session purge ses entrées.
+
+## Variables d'environnement (Phases 9 à 10.1)
 
 | Variable | Défaut | Effet |
 |---|---|---|
 | `DATAVORTEX_FAST_PARSE_MB` | `50` | Taille à partir de laquelle l'analyse CSV bascule sur Polars. |
 | `DATAVORTEX_SPILL_MB` | `50` | Taille à partir de laquelle le fichier source est déversé sur disque plutôt que conservé en mémoire. |
 | `DATAVORTEX_MAX_DECOMPRESSED_MB` | `500` | Taille maximale acceptée pour un CSV compressé une fois décompressé (Phase 10). Alignée par défaut sur la limite d'upload : la compression réduit le transfert réseau, pas le budget mémoire du pipeline. |
+| `DATAVORTEX_MAX_PLOT_POINTS` | `50000` | Nombre maximal de points transportés par une trace point à point (Phase 10.1). Une figure Plotly embarque ses données : sans plafond, un nuage de points sur 3,2 millions de lignes pèse 36 Mo de JSON et bloque l'onglet du navigateur. Les calculs (tendance, repères) restent faits sur toutes les données. |
 | `DATAVORTEX_PROFILE` | *(désactivé)* | À `1`, journalise (module `datavortex.profiling`) le détail cProfile et le pic mémoire tracemalloc de l'agrégation et des statistiques avancées. Désactivé par défaut : le profilage a un coût réel. |

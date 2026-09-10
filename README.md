@@ -17,7 +17,7 @@ DataVortex est une plateforme interactive de visualisation et d'analyse de donn�
 - 2D : nuage de points, ligne, heatmap, hexbin, barres groupées, bulles
 - 3D : nuage de points, surface
 - Avancé : pair plot, joint plot, ridge plot, essaim/strip
-- Multi-séries : plusieurs séries indépendantes (colonne, type de trace, couleur) sur un même graphique, avec axe Y secondaire optionnel ; tableau de bord multi-graphiques exportable en un seul PDF
+- Trois dispositions dans le même atelier : graphique simple, multi-séries (plusieurs colonnes Y sur un axe X, axe Y secondaire optionnel), ou grille de sous-graphiques (1x2 à 4x4) — avec les mêmes options avancées et le même export dans les trois cas
 - Lignes de tendance (linéaire, polynomiale, LOWESS) avec bandes de confiance, palettes daltonisme-safe, annotations
 - Export PNG / SVG / HTML interactif
 
@@ -185,12 +185,35 @@ Frontend (nginx + build de production, proxy `/api`) sur http://localhost:8080, 
 - Aide intégrée (F1 dans l'application) — 60+ sujets avec recherche
 - [`specs/`](specs) — spécifications d'origine, phase par phase
 
+## Performance
+
+Mesures sur un CSV de **210 Mo / 3,2 millions de lignes / 9 colonnes**
+(reproductibles : `backend/tests/test_performance_200mb.py`, détail dans
+[specs/PHASE_10_1_BENCHMARK_RESULTS.md](specs/PHASE_10_1_BENCHMARK_RESULTS.md)) :
+
+| Opération | Premier appel | Appel suivant |
+|---|---|---|
+| Chargement complet (upload + analyse) | ~9 s | — |
+| Aperçu, page de 100 lignes | 27 ms | 6 ms |
+| GroupBy, filtre | 0,2 – 0,6 s | — |
+| Statistiques descriptives | ~9 s | 4 ms |
+| Profil de qualité complet | ~10 s | 4 ms |
+| Graphique (nuage, grille) | ~1,2 s | — |
+
+Ce qui rend ces chiffres tenables : analyse CSV par Polars (10 à 50x le moteur
+Python de pandas), déversement du fichier source sur disque au-delà de 50 Mo,
+export CSV en flux, cache invalidé par version des données, et échantillonnage
+explicite là où il ne change pas la lecture du résultat — profil de qualité
+au-delà de 500 000 lignes, tracés au-delà de 50 000 points. Dans les deux cas
+l'interface affiche qu'il s'agit d'un échantillon.
+
 ## Limitations connues
 
 - **Sessions en mémoire** : les données uploadées vivent en RAM côté serveur par session (expiration après 1h d'inactivité, 10 sessions actives maximum) ; redémarrer le serveur efface tout. Pas de base de données persistante — pas prévu pour un usage multi-utilisateurs concurrent en production telle quelle.
 - **Pas d'authentification** : DataVortex écoute sur `127.0.0.1` par défaut et n'est pas conçu pour être exposé publiquement sans ajouts de sécurité (auth, rate limiting, TLS).
 - **Méthodes ML coûteuses en calcul** : SVM/SVR, processus gaussien, clustering hiérarchique et mean shift ont des garde-fous de taille (voir l'aide intégrée → Machine Learning → Limites sur les gros jeux de données) plutôt qu'un support illimité — au-delà, choisissez une méthode alternative ou filtrez vos données.
 - **Bundle frontend** : `plotly.js` pèse à lui seul près de 5MB avant compression ; il est chargé à la demande (code-splitting) mais reste le plus gros téléchargement initial une fois qu'un graphique est affiché.
+- **Graphiques sur très gros volumes** : au-delà de 50 000 points, les tracés point à point sont échantillonnés (une figure Plotly transporte ses données : 3,2 millions de points représentaient 36 Mo de JSON pour une tache visuellement identique). Les tendances et repères statistiques restent calculés sur l'intégralité des données, et la figure indique qu'elle est échantillonnée. Seuil réglable via `DATAVORTEX_MAX_PLOT_POINTS`.
 
 ## Licence
 

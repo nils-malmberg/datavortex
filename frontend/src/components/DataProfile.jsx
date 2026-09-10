@@ -6,10 +6,19 @@ import ProfileAnomaliesTab from './profile/ProfileAnomaliesTab'
 import ProfileSuggestionsTab from './profile/ProfileSuggestionsTab'
 import { Badge, ErrorBox, Loading, Segmented, SliderField } from './ui/common'
 
+function formatCount(value) {
+  return new Intl.NumberFormat('fr-FR').format(value)
+}
+
 /**
  * Profilage détaillé : ce qu'il faut savoir sur un jeu de données avant de
  * l'analyser — contenu colonne par colonne, qualité mesurée, anomalies, et
  * les corrections à envisager.
+ *
+ * Au-delà d'un demi-million de lignes, le serveur profile un échantillon
+ * aléatoire plutôt que tout le fichier (une minute de calcul sinon). Les
+ * chiffres affichés portent alors sur cet échantillon, et l'interface le dit :
+ * un score de qualité présenté comme exhaustif serait trompeur.
  */
 const TABS = [
   { value: 'profile', label: 'Profil' },
@@ -52,6 +61,12 @@ export default function DataProfile({ sessionId, refreshKey }) {
         <div className="flex flex-wrap items-center gap-2">
           <Segmented options={TABS} value={tab} onChange={setTab} ariaLabel="Section du profilage" />
           {data.filtered && <Badge tone="blue">données filtrées</Badge>}
+          {data.sampling?.sampled && (
+            <Badge tone="amber">
+              échantillon de {formatCount(data.sampling.rows_analyzed)} lignes sur{' '}
+              {formatCount(data.sampling.total_rows)}
+            </Badge>
+          )}
           {highPriority > 0 && <Badge tone="red">{highPriority} point(s) à corriger en priorité</Badge>}
         </div>
         <SliderField

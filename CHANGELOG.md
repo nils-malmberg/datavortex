@@ -2,6 +2,34 @@
 
 Toutes les phases de développement notables de DataVortex sont documentées ici, de la plus récente à la plus ancienne. Format inspiré de [Keep a Changelog](https://keepachangelog.com/), adapté au déroulé par phases de ce projet.
 
+## [Phase 10.1] — Atelier de visualisation unifié et performance sur 200 Mo
+
+Mesures détaillées, méthode et pistes écartées : [specs/PHASE_10_1_BENCHMARK_RESULTS.md](specs/PHASE_10_1_BENCHMARK_RESULTS.md).
+
+### Changé
+- **Un seul onglet « Visualisations »**. L'onglet « Multi-graphiques » introduit en Phase 10 dupliquait l'atelier tout en perdant ses types de graphiques et ses options avancées ; il est supprimé. L'atelier porte désormais un sélecteur de disposition à trois modes — graphique simple, multi-séries à axe Y secondaire, grille de sous-graphiques — qui partagent le même aperçu, le même export, le même historique et les mêmes presets.
+- Le mode multi-séries accepte maintenant les courbes de tendance et le panneau de style, jusqu'ici réservés au mode simple. Les trois modes s'exportent via `POST /api/export/plot` et s'ajoutent à un rapport PDF : plus aucune capacité n'est propre à un mode.
+
+### Ajouté
+- Grille de sous-graphiques (`POST /api/plot/subplots`) : de 1x2 à 4x4, préréglages ou dimensions libres, chaque case avec ses propres colonnes et son propre type (nuage, ligne, barres, aire, histogramme, box, violin). Redimensionner la grille conserve les cases déjà configurées.
+- Cache de résultats (`backend/app/cache.py`) pour les statistiques, les statistiques avancées, le profil et les propriétés de tableau. L'invalidation est portée par un numéro de version que `Session.__setattr__` incrémente : toute affectation de `df`, `filtered_df` ou `active_filter` invalide automatiquement, sans dépendre des 17 points de mutation répartis dans le code. Les deux écritures *en place* (colonne calculée, transformation) le signalent explicitement, et un test couvre chaque façon de modifier les données.
+- Plafond de points tracés (`DATAVORTEX_MAX_PLOT_POINTS`, 50 000 par défaut). Une figure Plotly transporte ses données brutes : un nuage de points sur 3,2 millions de lignes pesait 36 Mo de JSON et bloquait l'onglet du navigateur à la désérialisation, pour une tache visuellement identique. Les tendances et repères statistiques restent calculés sur l'intégralité des données ; seul le tracé est échantillonné, et la figure l'indique.
+- Suite de mesures sur 200 Mo (`backend/tests/test_performance_200mb.py`), ignorée automatiquement si le jeu de données de 3,2 millions de lignes n'a pas été généré.
+
+### Corrigé
+- **Le profil détaillé prenait neuf minutes** sur 3,2 millions de lignes : `_inconsistent_formatting` parcourait chaque valeur distincte en Python en y relançant un `value_counts()` (500 025 appels pour 500 000 lignes, mesuré au profileur). Ramené à 10 s, puis 4 ms en cache.
+- `detect_column_type` appliquait `.astype(str)` à la colonne entière pour en examiner 30 valeurs — ~100 ms par appel, dans une fonction que presque toutes les routes appellent plusieurs fois par requête.
+- `GET /rows` recalculait bornes d'outliers, types de colonnes et empreinte mémoire `deep=True` sur tout le jeu de données à chaque page de 100 lignes.
+- `POST /api/upload` exécutait décompression, analyse et écriture de 210 Mo sur disque dans la boucle d'événements, immobilisant toutes les autres requêtes — la cause directe de l'interface figée pendant un envoi. Déplacé dans le pool de threads. (Les routes `def` non asynchrones y étaient déjà exécutées par FastAPI : `upload` était la seule exception.)
+- Les statistiques et le profil faisaient deux passes de hachage (`nunique()` puis `value_counts()`) là où une seule suffit.
+- L'ajustement des lois de distribution triait 1,5 million de points par loi candidate. Échantillonné à 50 000 points, ce qui est aussi statistiquement plus juste : au-delà, le test de Kolmogorov-Smirnov rejette toute loi, y compris la bonne.
+- Les barres d'un sous-graphique agrègent par modalité au lieu d'émettre une barre par ligne.
+
+### Notes
+- Le profil détaillé est calculé sur un échantillon de 500 000 lignes au-delà de ce seuil, et l'onglet Profil l'affiche. Ses indicateurs sont des proportions, qu'un échantillon aléatoire estime fidèlement ; les présenter comme exhaustifs serait en revanche trompeur.
+- Les chaînes Arrow (`to_pandas(use_pyarrow_extension_array=True)`) ont été mesurées puis écartées : mémoire divisée par trois et `isna()` 39x plus rapide, mais `Series.duplicated()` lève `NotImplementedError` sur un `ArrowDtype` avec pandas 2.1.0, et les statistiques par colonne s'en servent.
+- Deux cibles de la spec étaient déjà atteintes avant cette phase : groupby à 622 ms (cible < 3 s) et filtre à 791 ms (cible < 1 s). Le diagnostic de départ — « chaque route recharge le fichier avec `pl.read_csv`, il faut passer en lazy » — ne correspondait pas à l'architecture : le fichier est analysé une seule fois au parsing, et aucun des coûts trouvés ne venait du moteur de calcul.
+
 ## [Phase 10] — Formats compressés, graphiques multi-séries, audit de performance
 
 Mesures détaillées et méthode de reproduction : [specs/PHASE_10_BENCHMARK_RESULTS.md](specs/PHASE_10_BENCHMARK_RESULTS.md).
