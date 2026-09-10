@@ -43,3 +43,7 @@ backend/tmp/
 htmlcov/
 .coverage
 coverage/
+
+# Jeux de données de test générés (Phase 9) — volumineux, reproductibles via
+# backend/scripts/generate_test_data.py
+backend/test_data/

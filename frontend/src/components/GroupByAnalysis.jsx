@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { exportGroupBy, getPreview, runGroupBy } from '../api/client'
+import { exportGroupBy, getPreview, runGroupByAsync } from '../api/client'
 import { extractFilename } from '../api/download'
+import useAsyncTask from '../hooks/useAsyncTask'
 import useSaveFile from '../hooks/useSaveFile'
 import PlotPreview from './PlotPreview'
 import ResultTable from './ui/ResultTable'
@@ -55,10 +56,13 @@ export default function GroupByAnalysis({ sessionId, refreshKey, onAddToReport }
   const [limit, setLimit] = useState(200)
   const [precision, setPrecision] = useState(4)
 
-  const [result, setResult] = useState(null)
-  const [isRunning, setIsRunning] = useState(false)
-  const [error, setError] = useState(null)
   const [exportError, setExportError] = useState(null)
+
+  // Le calcul part en arrière-plan côté serveur (Phase 9) : sur plusieurs
+  // centaines de milliers de lignes, une agrégation synchrone gelait
+  // l'interface pendant toute sa durée.
+  const task = useAsyncTask()
+  const { result, error, isRunning, elapsedMs } = task
 
   const numericColumns = useMemo(
     () => columns.filter((c) => NUMERIC_TYPES.includes(columnTypes[c])),
@@ -73,8 +77,11 @@ export default function GroupByAnalysis({ sessionId, refreshKey, onAddToReport }
       const numeric = data.columns.filter((c) => NUMERIC_TYPES.includes(data.column_types[c]))
       setGroupBy(grouping.slice(0, 1))
       setAggregations(numeric.slice(0, 1).map((col) => ({ id: nextId++, column: col, func: 'mean', quantile: 0.5, alias: '' })))
-      setResult(null)
+      task.reset()
     })
+    // `task` est volontairement absent des dépendances : ses fonctions sont
+    // stables (useCallback) et l'y inclure relancerait cet effet en boucle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, refreshKey])
 
   const toggleGroupColumn = (col) =>
@@ -119,19 +126,7 @@ export default function GroupByAnalysis({ sessionId, refreshKey, onAddToReport }
     limit,
   })
 
-  const compute = async () => {
-    setIsRunning(true)
-    setError(null)
-    try {
-      const { data } = await runGroupBy(sessionId, payload())
-      setResult(data)
-    } catch (err) {
-      setError(err?.response?.data?.error?.message || "Impossible de calculer ces agrégations.")
-      setResult(null)
-    } finally {
-      setIsRunning(false)
-    }
-  }
+  const compute = () => task.start(() => runGroupByAsync(sessionId, payload()))
 
   const handleExport = async (format) => {
     setExportError(null)
@@ -260,7 +255,15 @@ export default function GroupByAnalysis({ sessionId, refreshKey, onAddToReport }
           <button onClick={compute} disabled={!canCompute || isRunning} className={PRIMARY_BUTTON_CLASS}>
             {isRunning ? 'Calcul…' : 'Calculer'}
           </button>
-          {!canCompute && (
+          {isRunning && (
+            <div className="flex items-center gap-2">
+              <Loading>{`Calcul en cours… ${(elapsedMs / 1000).toFixed(1)}s`}</Loading>
+              <button onClick={task.abort} className={BUTTON_CLASS}>
+                Abandonner
+              </button>
+            </div>
+          )}
+          {!canCompute && !isRunning && (
             <span className="text-sm text-slate-400 dark:text-slate-500">
               Choisissez au moins une colonne de regroupement et une agrégation.
             </span>
@@ -277,6 +280,14 @@ export default function GroupByAnalysis({ sessionId, refreshKey, onAddToReport }
             <StatCard label="Groupes" value={result.group_count} sub={`${result.shown_rows} affiché(s)`} tone="blue" />
             <StatCard label="Colonnes calculées" value={result.value_columns.length} />
             {result.truncated && <Badge tone="amber">affichage tronqué à {limit} lignes</Badge>}
+            {result.metrics && (
+              <Badge tone="slate">
+                calculé en {result.metrics.duration_seconds.toFixed(2)}s
+                {result.metrics.throughput_rows_per_sec
+                  ? ` · ${result.metrics.throughput_rows_per_sec.toLocaleString('fr-FR')} lignes/s`
+                  : ''}
+              </Badge>
+            )}
             <div className="ml-auto flex items-center gap-2">
               <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Exporter :</span>
               {['csv', 'excel', 'latex'].map((fmt) => (

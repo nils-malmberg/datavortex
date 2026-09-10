@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { exportCsv, getRows } from '../api/client'
+import { exportCsvStream, getRows } from '../api/client'
 import { extractFilename } from '../api/download'
 import DataPreview from './DataPreview'
 import ReportBuilder from './ReportBuilder'
@@ -140,7 +140,8 @@ export default function Dashboard({ parseResult, filename, onReset, onInfoChange
 
   const handleExportCsv = useCallback(async () => {
     try {
-      const response = await exportCsv(sessionId)
+      // Export en flux (Phase 9) : même fichier, sans pic mémoire côté serveur.
+      const response = await exportCsvStream(sessionId)
       const name = extractFilename(response.headers['content-disposition'], 'data.csv')
       await saveFile(response.data, name)
     } catch {

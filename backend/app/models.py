@@ -26,6 +26,9 @@ class ParseResponse(BaseModel):
     n_columns: int
     columns: list[str]
     column_types: dict[str, str]
+    # Durée, débit et moteur d'analyse retenu (Phase 9) : sur un gros fichier,
+    # l'interface indique ainsi *pourquoi* le chargement a pris ce temps-là.
+    metrics: Optional[dict] = None
 
 
 # --- Visualisations (Phase 2) ------------------------------------------------
@@ -432,3 +435,21 @@ class ColumnTransformRequest(BaseModel):
     params: dict = {}
     new_name: Optional[str] = None
     replace: bool = False
+
+
+# --- Opérations asynchrones & export en flux (Phase 9) -------------------------
+
+class AsyncGroupByRequest(GroupByRequest):
+    """Même charge utile que /api/groupby, exécutée en arrière-plan."""
+
+
+class AsyncFilterRequest(AdvancedFilterRequest):
+    """Même charge utile que /api/filters/apply, exécutée en arrière-plan."""
+
+
+class StreamExportRequest(BaseModel):
+    session_id: str
+    separator: str = ","
+    encoding: str = "utf-8"
+    include_filter_comment: bool = True
+    chunk_rows: int = 10_000
