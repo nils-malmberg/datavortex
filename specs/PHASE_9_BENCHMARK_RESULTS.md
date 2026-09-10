@@ -50,7 +50,19 @@ recherchée tient dans les premières lignes.
 | Filtre (`age > 30`) | 0,024 s | 0,009 s | 2,7x |
 | Tri par salaire | 0,139 s | 0,078 s | 1,8x |
 
-**La spec se trompe sur ce point.** Elle annonce « GroupBy sur 500k+ lignes :
+Le filtre avancé de `/api/filters/apply` est plus coûteux que le filtre brut,
+parce qu'il mesure en plus la contribution isolée de chaque condition :
+
+| Opération, sur 500 000 lignes | Durée |
+|---|---|
+| filtre simple (1 condition) | 1 ms |
+| filtre à 4 conditions | 207 ms |
+| route `/api/filters/apply` complète | **399 ms** |
+
+Sous la cible de 500 ms sur 500 000 lignes, mais de l'ordre de plusieurs
+secondes sur un fichier de 500 Mo — d'où la variante en tâche de fond.
+
+**La spec se trompe sur un point.** Elle annonce « GroupBy sur 500k+ lignes :
 plusieurs secondes de délai ». En réalité pandas agrège 500 000 lignes en 35 ms.
 Le délai de plusieurs secondes que ressentait l'utilisateur venait du chargement
 (analyse + détection ≈ 11 s), pas de l'agrégation. C'est pourquoi cette phase ne
