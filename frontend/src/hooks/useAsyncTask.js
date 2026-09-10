@@ -79,7 +79,7 @@ export default function useAsyncTask() {
 
         let data
         try {
-          ;({ data } = await getTask(taskId))
+          ({ data } = await getTask(taskId))
         } catch (err) {
           if (!mountedRef.current || currentTaskRef.current !== taskId) return
           setError(err?.response?.data?.error?.message || 'Le suivi du calcul a été interrompu.')
