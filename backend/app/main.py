@@ -48,6 +48,7 @@ from app.models import (
     AdvancedFilterRequest,
     AdvancedPlotRequest,
     ApplyFilterRequest,
+    AsyncFilterRequest,
     AsyncGroupByRequest,
     ClassificationRequest,
     ClusteringRequest,
@@ -779,14 +780,27 @@ def plot_advanced(body: AdvancedPlotRequest) -> dict:
 def apply_advanced_filter_route(body: AdvancedFilterRequest) -> dict:
     """Applique un filtre complexe et renvoie ses indicateurs : lignes retenues,
     contribution de chaque condition, colonnes concernées et aperçu marqué."""
+    return _advanced_filter_payload(body)
+
+
+def _advanced_filter_payload(body) -> dict:
+    """Applique le filtre et mesure son coût, sous le verrou de la session.
+
+    Extrait de la route pour être exécutable tel quel dans un thread de tâche.
+    Le verrou est indispensable ici : l'opération écrit `filtered_df` dans la
+    session, et deux filtres concurrents se répondraient l'un l'autre.
+    """
     session = _get_parsed_session_or_error(body.session_id)
-    return apply_advanced_filter(
-        session,
-        body.filter,
-        invert=body.invert,
-        preview_rows=body.preview_rows,
-        preview_mode=body.preview_mode,
-    )
+    with session.lock, Timer() as timer:
+        result = apply_advanced_filter(
+            session,
+            body.filter,
+            invert=body.invert,
+            preview_rows=body.preview_rows,
+            preview_mode=body.preview_mode,
+        )
+    result["metrics"] = timer.metrics(rows=result.get("total_rows_unfiltered"))
+    return result
 
 
 # --- Lecture tabulaire paginée (Phase 8) --------------------------------------
@@ -958,6 +972,24 @@ def groupby_async(body: AsyncGroupByRequest) -> dict:
     """
     _get_parsed_session_or_error(body.session_id)
     task = task_registry.submit("groupby", _groupby_payload, body)
+    return {"task_id": task.task_id, "status": task.status, "kind": task.kind}
+
+
+@app.post("/api/filters/apply/async")
+def apply_advanced_filter_async(body: AsyncFilterRequest) -> dict:
+    """Applique un filtre complexe en arrière-plan.
+
+    Sur un gros fichier, l'évaluation d'un filtre à plusieurs conditions se
+    compte en secondes — et exécutée dans le gestionnaire de route, elle immobilise
+    la boucle d'événements, donc *toutes* les sessions ouvertes, pas seulement
+    celle qui filtre. C'est ce blocage-là que la tâche de fond supprime.
+
+    L'aperçu interactif du constructeur de filtres continue d'utiliser la route
+    synchrone : il se redéclenche à chaque modification, et un aller-retour de
+    sondage supplémentaire y coûterait plus qu'il ne rapporte.
+    """
+    _get_parsed_session_or_error(body.session_id)
+    task = task_registry.submit("filter", _advanced_filter_payload, body)
     return {"task_id": task.task_id, "status": task.status, "kind": task.kind}
 
 

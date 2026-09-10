@@ -50,7 +50,7 @@ Il n'y a pas de rate limiting (usage local mono-utilisateur).
 | `GET /api/data/{session_id}/preview?rows=N` | Aperçu des N premières lignes (défaut : constante `PREVIEW_ROWS`). |
 | `GET /api/data/{session_id}/rows` | Lignes paginées avec tri, recherche texte et regroupement (utilisé par l'aperçu principal). |
 | `POST /api/data/{session_id}/filter` | Applique un filtre (`ApplyFilterRequest`, arbre `FilterNode` ET/OU) à la session. |
-| `POST /api/filters/apply` | Filtre avancé avec aperçu (`AdvancedFilterRequest`) : `invert`, `preview_mode: "all"|"kept"|"removed"`. |
+| `POST /api/filters/apply` | Filtre avancé avec aperçu (`AdvancedFilterRequest`) : `invert`, `preview_mode: "all"|"kept"|"removed"`. Retourne aussi `metrics`. Voir la variante asynchrone pour les gros fichiers. |
 | `GET /api/columns/{session_id}` | Liste des colonnes avec leur type détecté. |
 | `POST /api/columns/operation` | Renommer / dupliquer / supprimer / réordonner des colonnes (`ColumnOperationRequest`). |
 | `POST /api/columns/transform` | Transformation d'une colonne : `binning`, `encoding`, `lag`, `rolling` (`ColumnTransformRequest`, `params` spécifiques à la transformation). |
@@ -133,6 +133,7 @@ reste utilisable pendant le calcul.
 |---|---|
 | `POST /api/groupby/async` | Même charge utile que `POST /api/groupby`. Rend `{task_id, status, kind}` sans attendre le calcul. La session est validée sur-le-champ : une session inconnue renvoie 404 immédiatement. |
 | `GET /api/tasks/{task_id}` | État de la tâche : `pending`, `running`, `done`, `error` ou `cancelled`. Le résultat est dans `data` quand `status` vaut `done` ; l'erreur est dans `error` (`{code, message}`, même forme que les routes synchrones) quand il vaut `error`. |
+| `POST /api/filters/apply/async` | Même charge utile que `POST /api/filters/apply`. Applique le filtre en arrière-plan, sous le verrou de la session. |
 | `DELETE /api/tasks/{task_id}` | Abandonne la tâche. Un calcul déjà lancé n'est pas interrompu — pandas et Polars n'offrent pas de point d'annulation — mais son résultat est écarté. |
 
 Sondage recommandé : premier appel après ~250 ms, puis intervalle croissant

@@ -262,3 +262,89 @@ def test_health_counts_running_tasks():
         },
     )
     assert client.get("/api/health").json()["tasks"]["total"] >= 1
+
+
+# --- Filtre en arrière-plan ----------------------------------------------------
+
+FILTER_IT = {"type": "condition", "column": "dept", "operator": "eq", "value": "IT"}
+
+
+def test_async_filter_matches_synchronous_result():
+    session_id = _session()
+    body = {"session_id": session_id, "filter": FILTER_IT}
+
+    sync = client.post("/api/filters/apply", json=body).json()
+    task_id = client.post("/api/filters/apply/async", json=body).json()["task_id"]
+    result = _await_task(task_id)
+
+    assert result["status"] == "done"
+    assert result["data"]["total_rows"] == sync["total_rows"]
+    assert result["data"]["removed_rows"] == sync["removed_rows"]
+    assert result["data"]["rows"] == sync["rows"]
+
+
+def test_async_filter_applies_to_the_session():
+    """Le filtre calculé en tâche de fond doit bien devenir le filtre actif."""
+    session_id = _session()
+    task_id = client.post(
+        "/api/filters/apply/async",
+        json={"session_id": session_id, "filter": FILTER_IT},
+    ).json()["task_id"]
+    _await_task(task_id)
+
+    preview = client.get(f"/api/data/{session_id}/preview").json()
+    assert preview["filtered"] is True
+    assert preview["total_rows"] == 2  # Alice et Charlie
+    assert preview["total_rows_unfiltered"] == 4
+
+
+def test_async_filter_rejects_unknown_session_synchronously():
+    resp = client.post("/api/filters/apply/async", json={"session_id": "inconnu", "filter": FILTER_IT})
+    assert resp.status_code == 404
+
+
+def test_async_filter_surfaces_business_error():
+    session_id = _session()
+    task_id = client.post(
+        "/api/filters/apply/async",
+        json={
+            "session_id": session_id,
+            "filter": {"type": "condition", "column": "colonne_absente", "operator": "eq", "value": "x"},
+        },
+    ).json()["task_id"]
+
+    result = _await_task(task_id)
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "COLUMN_NOT_FOUND"
+
+
+def test_filter_response_carries_metrics():
+    session_id = _session()
+    body = client.post("/api/filters/apply", json={"session_id": session_id, "filter": FILTER_IT}).json()
+    assert body["metrics"]["duration_seconds"] >= 0
+    assert body["metrics"]["rows_processed"] == 4
+
+
+def test_concurrent_async_filters_leave_a_consistent_session():
+    """Deux filtres lancés en même temps ne doivent pas produire un état hybride.
+
+    Le verrou de session sérialise les deux : le dernier à s'exécuter gagne, et
+    l'état de la session correspond bien à l'un des deux filtres — jamais aux
+    lignes de l'un avec le compte de l'autre.
+    """
+    session_id = _session()
+    filters = [
+        {"type": "condition", "column": "dept", "operator": "eq", "value": "IT"},
+        {"type": "condition", "column": "dept", "operator": "eq", "value": "Sales"},
+    ]
+    task_ids = [
+        client.post("/api/filters/apply/async", json={"session_id": session_id, "filter": f}).json()["task_id"]
+        for f in filters
+    ]
+    for task_id in task_ids:
+        assert _await_task(task_id)["status"] == "done"
+
+    preview = client.get(f"/api/data/{session_id}/preview").json()
+    assert preview["total_rows"] == 2
+    departments = {row["dept"] for row in preview["rows"]}
+    assert len(departments) == 1, f"état incohérent : plusieurs départements retenus ({departments})"

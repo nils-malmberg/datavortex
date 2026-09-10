@@ -8,7 +8,8 @@ Mesures détaillées et méthode de reproduction : [specs/PHASE_9_BENCHMARK_RESU
 
 ### Ajouté
 - Moteur d'analyse CSV en cascade (`backend/app/data_engine.py`) : Polars, puis moteur C de pandas, puis moteur Python, chaque niveau servant de repli au précédent. Sur 500 000 lignes, l'analyse passe de 2,94 s à 0,24 s (12,5x). Le basculement s'opère au-delà de 50 Mo ; `DATAVORTEX_FAST_PARSE_MB` permet d'abaisser ce seuil.
-- Opérations en arrière-plan (`backend/app/async_tasks.py`) : `POST /api/groupby/async` rend un `task_id` immédiatement, `GET /api/tasks/{id}` livre le résultat, `DELETE /api/tasks/{id}` abandonne le calcul. L'interface affiche la progression et reste utilisable pendant le calcul.
+- Opérations en arrière-plan (`backend/app/async_tasks.py`) : `POST /api/groupby/async` et `POST /api/filters/apply/async` rendent un `task_id` immédiatement, `GET /api/tasks/{id}` livre le résultat, `DELETE /api/tasks/{id}` abandonne le calcul. L'interface affiche la progression du groupby et reste utilisable pendant le calcul. Un filtre à quatre conditions coûte 399 ms sur 500 000 lignes, donc plusieurs secondes sur un fichier de 500 Mo : exécuté dans le gestionnaire de route, il immobilisait la boucle d'événements et donc *toutes* les sessions ouvertes, pas seulement celle qui filtrait.
+- Verrou par session : les opérations qui écrivent `filtered_df` sont désormais sérialisées. Deux filtres concurrents pouvaient laisser la session dans un état hybride — le risque existait déjà entre deux requêtes HTTP simultanées, l'exécution en arrière-plan le rendait plus probable.
 - Export CSV en flux : `POST /api/export/csv/stream` émet le fichier par tranches de 10 000 lignes, et `GET /api/export/csv/estimate/{session_id}` annonce le volume approximatif avant le téléchargement.
 - `GET /api/health` remonte désormais l'empreinte mémoire du processus, la durée de fonctionnement et le nombre de tâches en cours. Les routes coûteuses annoncent durée, débit et moteur d'analyse retenu.
 - Jeux de données de test reproductibles (`backend/scripts/generate_test_data.py`) et banc de mesure (`backend/scripts/benchmark.py`).
@@ -21,6 +22,7 @@ Mesures détaillées et méthode de reproduction : [specs/PHASE_9_BENCHMARK_RESU
 
 ### Notes
 - Deux critères de la spec ne sont pas atteints sur un fichier de 527 Mo : chargement en 5,36 s (cible < 5 s) et empreinte de 2,2 Go (cible < 2 Go). L'analyse Polars elle-même ne prend que 0,84 s ; le reste est la conversion vers la représentation pandas, où chaque chaîne devient un objet Python. Les pistes chiffrées sont documentées dans les résultats de mesure.
+- L'aperçu interactif du constructeur de filtres reste sur la route synchrone : il se redéclenche à chaque modification du filtre, et un aller-retour de sondage y coûterait plus qu'il ne rapporte. C'est le blocage du serveur, et non celui du navigateur, que la version asynchrone corrige.
 - Les opérations analytiques (groupby, filtre, tri) restent en pandas : sur 500 000 lignes, un groupby prend déjà 35 ms. Le contraire de ce qu'annonçait la spec, et un gain de 20 ms ne justifie pas de convertir la représentation dans les vingt services qui la consomment.
 
 ## [1.0.4] — Démarrage rapide

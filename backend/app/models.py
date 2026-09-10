@@ -443,6 +443,10 @@ class AsyncGroupByRequest(GroupByRequest):
     """Même charge utile que /api/groupby, exécutée en arrière-plan."""
 
 
+class AsyncFilterRequest(AdvancedFilterRequest):
+    """Même charge utile que /api/filters/apply, exécutée en arrière-plan."""
+
+
 class StreamExportRequest(BaseModel):
     session_id: str
     separator: str = ","

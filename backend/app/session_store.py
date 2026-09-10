@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -54,6 +55,12 @@ class Session:
     # Modèles ML entraînés dans cette session (Phase 8.1), indexés par model_id,
     # pour permettre leur export a posteriori sans tout ré-entraîner.
     models: dict = field(default_factory=dict)
+    # Sérialise les opérations qui modifient la session (Phase 9). Deux filtres
+    # appliqués en même temps écrivent tous deux `filtered_df` : sans verrou, le
+    # résultat renvoyé à l'un peut décrire l'état laissé par l'autre. Le risque
+    # existait déjà entre deux requêtes HTTP concurrentes ; l'exécution en
+    # arrière-plan le rend simplement plus probable.
+    lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def touch(self) -> None:
         self.last_accessed = time.time()
