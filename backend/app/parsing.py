@@ -95,15 +95,6 @@ def parse_json(raw_bytes: bytes, encoding: str) -> pd.DataFrame:
     return pd.read_json(io.StringIO(text))
 
 
-def detect_file_kind(filename: str) -> str:
-    lower = filename.lower()
-    if lower.endswith((".xlsx", ".xls")):
-        return "excel"
-    if lower.endswith(".json"):
-        return "json"
-    return "csv"
-
-
 def detect_column_type(series: pd.Series) -> str:
     """Détecte le type logique d'une colonne : integer, float, boolean, datetime, string."""
     if pd.api.types.is_bool_dtype(series):

@@ -1,7 +1,25 @@
 import { useCallback, useRef, useState } from 'react'
 import { uploadFile } from '../api/client'
 
-const ACCEPTED_EXTENSIONS = ['.csv', '.txt', '.tsv', '.xlsx', '.xls', '.json']
+// Phase 10 : formats compressés acceptés en plus du CSV/Excel/JSON historique.
+// Le backend est la source de vérité (app/data_service.py) — cette liste ne
+// sert qu'à donner un message d'erreur immédiat côté client, avant l'aller-retour réseau.
+const ACCEPTED_EXTENSIONS = [
+  '.csv',
+  '.txt',
+  '.tsv',
+  '.csv.gz',
+  '.csv.bz2',
+  '.csv.zip',
+  '.xlsx',
+  '.xls',
+  '.json',
+  '.parquet',
+  '.parquet.gz',
+  '.parquet.snappy',
+  '.parquet.zstd',
+  '.feather',
+]
 
 function isAcceptedFile(file) {
   const name = file.name.toLowerCase()
@@ -99,7 +117,7 @@ export default function UploadZone({ onUploaded, mergeableTabs, onOpenMergeDialo
             : 'Glissez-déposez un fichier ici, ou cliquez pour parcourir'}
         </p>
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-          Formats supportés : CSV, TSV, Excel (.xlsx, .xls), JSON — jusqu&apos;à 100MB
+          Formats supportés : CSV/TSV (+ .gz, .bz2, .zip), Excel, JSON, Parquet, Feather — jusqu&apos;à 500MB
         </p>
       </div>
       {error && (

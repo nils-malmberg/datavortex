@@ -17,6 +17,12 @@ class UploadResponse(BaseModel):
     available_separators: list[str] = []
     raw_preview: list[str] = []
     already_parsed: bool = False
+    # Format détaillé et infos de compression (Phase 10) : `file_kind` reste la
+    # nature de contenu ("csv", "parquet"...) sur laquelle le reste de
+    # l'application branche sa logique, `format` porte l'emballage détecté
+    # ("csv_gz", "parquet_zstd"...) pour affichage côté frontend.
+    format: str = "csv"
+    file_info: dict = {}
 
 
 class ParseResponse(BaseModel):

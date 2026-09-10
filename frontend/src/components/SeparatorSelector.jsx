@@ -8,6 +8,19 @@ const SEPARATOR_LABELS = {
   '|': 'Pipe ( | )',
 }
 
+const COMPRESSION_LABELS = {
+  gzip: 'gzip',
+  bzip2: 'bzip2',
+  zip: 'zip',
+  snappy: 'snappy',
+  zstd: 'zstd',
+}
+
+function formatMb(mb) {
+  if (mb == null) return null
+  return mb < 1 ? `${Math.round(mb * 1024)} Ko` : `${mb.toFixed(1)} Mo`
+}
+
 function splitPreviewLine(line, separator) {
   if (!separator) return [line]
   return line.split(separator)
@@ -20,7 +33,12 @@ export default function SeparatorSelector({ uploadData, onParsed, onCancel }) {
     detected_separator: detectedSeparator,
     available_separators: availableSeparators,
     raw_preview: rawPreview,
+    file_info: fileInfo,
   } = uploadData
+
+  // Phase 10 : le fichier reçu est décompressé côté serveur avant d'arriver
+  // ici — cette bannière est purement informative sur ce qui a été détecté.
+  const compressionLabel = fileInfo?.compression ? COMPRESSION_LABELS[fileInfo.compression] : null
 
   const [separator, setSeparator] = useState(detectedSeparator || ',')
   const [customSeparator, setCustomSeparator] = useState('')
@@ -67,6 +85,16 @@ export default function SeparatorSelector({ uploadData, onParsed, onCancel }) {
           autre avant de parser le fichier.
         </p>
       </div>
+
+      {compressionLabel && (
+        <p className="rounded-md bg-slate-100 px-4 py-2 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          📦 Compression <span className="font-medium">{compressionLabel}</span> détectée —{' '}
+          {formatMb(fileInfo.size_mb)} reçus
+          {fileInfo.uncompressed_size_mb != null && (
+            <> · {formatMb(fileInfo.uncompressed_size_mb)} une fois décompressé</>
+          )}
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-3">
         {(availableSeparators || []).map((sep) => (
