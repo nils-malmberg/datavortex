@@ -818,16 +818,24 @@ def get_rows(
 
 # --- Groupby & agrégations (Phase 8) -------------------------------------------
 
-def _run_groupby_for(body) -> dict:
+def _run_groupby_for(body) -> tuple[dict, int]:
+    """Exécute l'agrégation et rend aussi le nombre de lignes lues.
+
+    Le débit doit se mesurer sur les lignes *parcourues*, pas sur les groupes
+    produits : agréger 500 000 lignes en 42 groupes n'est pas un débit de 42
+    lignes par seconde.
+    """
     session = _get_parsed_session_or_error(body.session_id)
-    return run_groupby(
-        session.active_df(),
+    df = session.active_df()
+    result = run_groupby(
+        df,
         group_by=body.group_by,
         aggregations=body.aggregations,
         sort_by=body.sort_by,
         sort_ascending=body.sort_ascending,
         limit=body.limit,
     )
+    return result, int(df.shape[0])
 
 
 def _groupby_payload(body) -> dict:
@@ -838,11 +846,11 @@ def _groupby_payload(body) -> dict:
     même charge utile.
     """
     with Timer() as timer:
-        result = _run_groupby_for(body)
+        result, input_rows = _run_groupby_for(body)
     result.pop("table")
     figure = result.pop("figure")
     result["figure"] = _figure_to_response(figure) if figure is not None else None
-    result["metrics"] = timer.metrics(rows=result.get("group_count"))
+    result["metrics"] = timer.metrics(rows=input_rows)
     return result
 
 
@@ -854,7 +862,7 @@ def groupby(body: GroupByRequest) -> dict:
 
 @app.post("/api/groupby/export")
 def export_groupby(body: GroupByExportRequest) -> Response:
-    result = _run_groupby_for(body)
+    result, _ = _run_groupby_for(body)
     return _table_response(result["table"], body.format, body.precision, "groupby")
 
 

@@ -218,6 +218,60 @@ export function runGroupBy(sessionId, { groupBy, aggregations, sortBy, sortAscen
   })
 }
 
+// --- Opérations asynchrones & export en flux (Phase 9) -------------------------
+
+/**
+ * Lance l'agrégation en arrière-plan. Rend un `task_id` immédiatement : le
+ * calcul se poursuit côté serveur pendant que l'interface reste utilisable.
+ */
+export function runGroupByAsync(sessionId, { groupBy, aggregations, sortBy, sortAscending = true, limit = 500 }) {
+  return api.post('/groupby/async', {
+    session_id: sessionId,
+    group_by: groupBy,
+    aggregations,
+    sort_by: sortBy || undefined,
+    sort_ascending: sortAscending,
+    limit,
+  })
+}
+
+export function getTask(taskId) {
+  return api.get(`/tasks/${taskId}`)
+}
+
+export function cancelTask(taskId) {
+  return api.delete(`/tasks/${taskId}`)
+}
+
+/** Volume approximatif de l'export, pour prévenir avant un téléchargement lourd. */
+export function estimateCsvExport(sessionId) {
+  return api.get(`/export/csv/estimate/${sessionId}`)
+}
+
+/**
+ * Export CSV en flux : le serveur émet le fichier par tranches au lieu de le
+ * construire entièrement en mémoire. `onProgress` reçoit le nombre d'octets
+ * reçus, le total restant inconnu jusqu'à la fin.
+ */
+export function exportCsvStream(
+  sessionId,
+  { separator = ',', encoding = 'utf-8', includeFilterComment = true, onProgress } = {},
+) {
+  return api.post(
+    '/export/csv/stream',
+    {
+      session_id: sessionId,
+      separator,
+      encoding,
+      include_filter_comment: includeFilterComment,
+    },
+    {
+      responseType: 'blob',
+      onDownloadProgress: onProgress ? (event) => onProgress(event.loaded) : undefined,
+    },
+  )
+}
+
 export function exportGroupBy(sessionId, { groupBy, aggregations, sortBy, sortAscending = true, format, precision = 4 }) {
   return api.post(
     '/groupby/export',

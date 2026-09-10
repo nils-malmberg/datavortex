@@ -247,7 +247,8 @@ def test_groupby_response_carries_metrics():
         },
     ).json()
     assert body["metrics"]["duration_seconds"] >= 0
-    assert body["metrics"]["rows_processed"] == 2
+    # Le débit se mesure sur les lignes lues (4), pas sur les groupes produits (2).
+    assert body["metrics"]["rows_processed"] == 4
 
 
 def test_health_counts_running_tasks():

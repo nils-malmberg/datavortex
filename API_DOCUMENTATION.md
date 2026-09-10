@@ -25,6 +25,8 @@ Le `code` est stable (à tester par les clients), le `message` est un texte lisi
 | `INVALID_FILTER_VALUE` / `UNKNOWN_OPERATOR` / `INVALID_REGEX` | 400 | Filtre malformé |
 | `TOO_MANY_SAMPLES` | 422 | Jeu de données trop volumineux pour la méthode ML demandée (voir aide intégrée) |
 | `REPORT_GENERATION_FAILED` | 500 | Échec de génération du PDF |
+| `TASK_NOT_FOUND` | 404 | Tâche de fond inconnue ou dont le résultat a expiré |
+| `INVALID_ENCODING` | 400 | Encoding d'export inconnu |
 | `INTERNAL_ERROR` | 500 | Erreur non anticipée (bug) |
 
 Il n'y a pas de rate limiting (usage local mono-utilisateur).
@@ -35,9 +37,9 @@ Il n'y a pas de rate limiting (usage local mono-utilisateur).
 
 | Route | Description |
 |---|---|
-| `GET /api/health` | Ping de santé du serveur. |
+| `GET /api/health` | État du serveur : empreinte mémoire (`memory.rss_mb`), durée de fonctionnement, tâches de fond en cours, disponibilité de Polars. |
 | `POST /api/upload` | Upload d'un fichier (`multipart/form-data`, champ `file`). Détecte le type (csv/excel/json), l'encoding et, pour un CSV, propose un séparateur. Retourne un `session_id`. |
-| `POST /api/parse` | Parse définitivement la session avec le séparateur choisi (`{session_id, separator}`). Retourne `n_rows`, `n_columns`, `columns`, `column_types`. |
+| `POST /api/parse` | Parse définitivement la session avec le séparateur choisi (`{session_id, separator}`). Retourne `n_rows`, `n_columns`, `columns`, `column_types`, et `metrics` (durée, débit, moteur d'analyse retenu : `polars`, `pandas-c` ou `pandas-python`). |
 | `DELETE /api/session/{session_id}` | Libère une session (données + modèles ML entraînés associés). |
 | `POST /api/merge` | Combine plusieurs sessions (`session_ids`, `mode: "concat"|"merge"`, `key_column` pour un merge façon SQL join). |
 
@@ -118,3 +120,52 @@ Il n'y a pas de rate limiting (usage local mono-utilisateur).
 - Tous les corps de requête sont validés par Pydantic ; un champ manquant ou mal typé renvoie une erreur `422` FastAPI standard (pas l'enveloppe `{"error": ...}` ci-dessus, réservée aux erreurs métier).
 - Les endpoints de graphique (`/api/plot/*`) renvoient une figure Plotly (`dict` sérialisable directement par `Plotly.newPlot`) plutôt qu'une image — l'export en image se fait via `/api/export/plot` séparément.
 - Voir `backend/app/models.py` pour la définition Pydantic exacte et exhaustive de chaque requête (source de vérité — cette page en donne une vue lisible mais non générée automatiquement).
+
+---
+
+## Opérations en arrière-plan (Phase 9)
+
+Les calculs longs peuvent être lancés en tâche de fond : la route rend un
+identifiant immédiatement, le client interroge ensuite son état. L'interface
+reste utilisable pendant le calcul.
+
+| Route | Description |
+|---|---|
+| `POST /api/groupby/async` | Même charge utile que `POST /api/groupby`. Rend `{task_id, status, kind}` sans attendre le calcul. La session est validée sur-le-champ : une session inconnue renvoie 404 immédiatement. |
+| `GET /api/tasks/{task_id}` | État de la tâche : `pending`, `running`, `done`, `error` ou `cancelled`. Le résultat est dans `data` quand `status` vaut `done` ; l'erreur est dans `error` (`{code, message}`, même forme que les routes synchrones) quand il vaut `error`. |
+| `DELETE /api/tasks/{task_id}` | Abandonne la tâche. Un calcul déjà lancé n'est pas interrompu — pandas et Polars n'offrent pas de point d'annulation — mais son résultat est écarté. |
+
+Sondage recommandé : premier appel après ~250 ms, puis intervalle croissant
+plafonné à 3 s. Les résultats terminés restent disponibles 10 minutes.
+
+```bash
+TASK=$(curl -s -X POST localhost:8000/api/groupby/async \
+  -H 'Content-Type: application/json' \
+  -d '{"session_id":"...","group_by":["department"],
+       "aggregations":[{"column":"salary","func":"mean"}]}' | jq -r .task_id)
+
+curl -s localhost:8000/api/tasks/$TASK | jq '.status, .data.group_count'
+```
+
+## Export en flux (Phase 9)
+
+| Route | Description |
+|---|---|
+| `POST /api/export/csv/stream` | Export CSV émis par tranches (`StreamExportRequest` : `separator`, `encoding`, `include_filter_comment`, `chunk_rows`). Réponse en `transfer-encoding: chunked`, sans pic mémoire côté serveur. |
+| `GET /api/export/csv/estimate/{session_id}` | Volume approximatif de l'export : `rows`, `columns`, `estimated_bytes`, `chunk_rows`. |
+
+`POST /api/export/csv` (construction en mémoire) reste disponible et produit
+exactement le même fichier — l'égalité des deux sorties est vérifiée par les
+tests. La version en flux est à préférer au-delà de quelques dizaines de milliers
+de lignes.
+
+L'encoding est validé **avant** l'ouverture du flux : une fois le premier octet
+parti, le statut HTTP l'est aussi, et une erreur se traduirait par un fichier
+tronqué sans explication.
+
+## Variables d'environnement (Phase 9)
+
+| Variable | Défaut | Effet |
+|---|---|---|
+| `DATAVORTEX_FAST_PARSE_MB` | `50` | Taille à partir de laquelle l'analyse CSV bascule sur Polars. |
+| `DATAVORTEX_SPILL_MB` | `50` | Taille à partir de laquelle le fichier source est déversé sur disque plutôt que conservé en mémoire. |

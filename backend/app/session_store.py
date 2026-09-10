@@ -29,7 +29,8 @@ MAX_SESSIONS = 10  # nombre maximal de fichiers ouverts simultanément
 # 500MB, ce doublon est exactement ce qui fait dépasser le budget mémoire.
 # Le fichier sur disque reste nécessaire : changer de séparateur ré-analyse la
 # source, et Polars sait la lire par chemin sans la charger en RAM.
-SPILL_THRESHOLD_BYTES = 50 * 1024 * 1024  # 50MB
+# Réglable via DATAVORTEX_SPILL_MB, comme le seuil d'analyse rapide.
+SPILL_THRESHOLD_BYTES = int(float(os.environ.get("DATAVORTEX_SPILL_MB", "50")) * 1024 * 1024)
 
 
 @dataclass

@@ -21,6 +21,7 @@ stratégie « dual support » décrite au §2.2 de la spec Phase 9.
 from __future__ import annotations
 
 import io
+import os
 from pathlib import Path
 from typing import Optional, Union
 
@@ -37,7 +38,10 @@ except ImportError:  # pragma: no cover
     POLARS_AVAILABLE = False
 
 # Au-delà de cette taille, on bascule sur le moteur rapide (§2.2 de la spec).
-POLARS_THRESHOLD_BYTES = 50 * 1024 * 1024  # 50MB
+# Réglable sans modifier le code : le seuil de 50MB est prudent, et un fichier
+# de 30MB — 500 000 lignes environ — reste analysé par le moteur Python, dix
+# fois plus lentement. DATAVORTEX_FAST_PARSE_MB permet d'abaisser ce seuil.
+POLARS_THRESHOLD_BYTES = int(float(os.environ.get("DATAVORTEX_FAST_PARSE_MB", "50")) * 1024 * 1024)
 
 # Encodings que Polars sait lire sans transcodage préalable.
 UTF8_ALIASES = {"utf-8", "utf8", "ascii", "us-ascii", "utf-8-sig", "utf8-sig"}
