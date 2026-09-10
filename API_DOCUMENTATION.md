@@ -38,8 +38,8 @@ Il n'y a pas de rate limiting (usage local mono-utilisateur).
 | Route | Description |
 |---|---|
 | `GET /api/health` | État du serveur : empreinte mémoire (`memory.rss_mb`), durée de fonctionnement, tâches de fond en cours, disponibilité de Polars. |
-| `POST /api/upload` | Upload d'un fichier (`multipart/form-data`, champ `file`). Détecte le type (csv/excel/json), l'encoding et, pour un CSV, propose un séparateur. Retourne un `session_id`. |
-| `POST /api/parse` | Parse définitivement la session avec le séparateur choisi (`{session_id, separator}`). Retourne `n_rows`, `n_columns`, `columns`, `column_types`, et `metrics` (durée, débit, moteur d'analyse retenu : `polars`, `pandas-c` ou `pandas-python`). |
+| `POST /api/upload` | Upload d'un fichier (`multipart/form-data`, champ `file`). Détecte le format depuis l'extension — CSV, CSV.GZ/BZ2/ZIP, Parquet (toute compression interne), Feather, Excel, JSON (Phase 10) — l'encoding et, pour un CSV, propose un séparateur. Retourne un `session_id`, `format` (ex: `"csv_gz"`) et `file_info` (taille, compression, taille décompressée estimée). |
+| `POST /api/parse` | Parse définitivement la session avec le séparateur choisi (`{session_id, separator}`). Retourne `n_rows`, `n_columns`, `columns`, `column_types`, et `metrics` (durée, débit, moteur d'analyse retenu : `polars`, `pandas-c` ou `pandas-python`). Sans objet pour Parquet/Feather/Excel/JSON, déjà analysés à l'upload (`already_parsed: true`). |
 | `DELETE /api/session/{session_id}` | Libère une session (données + modèles ML entraînés associés). |
 | `POST /api/merge` | Combine plusieurs sessions (`session_ids`, `mode: "concat"|"merge"`, `key_column` pour un merge façon SQL join). |
 
@@ -76,6 +76,7 @@ Il n'y a pas de rate limiting (usage local mono-utilisateur).
 | `POST /api/plot/3d` | Graphique 3D (`Plot3DRequest` : `x`, `y`, `z`, `plot_type`). |
 | `POST /api/plot/advanced` | Graphiques avancés (`AdvancedPlotRequest`) : types étendus (pair/joint/ridge/strip…), `trend` (tendance + confiance), `overlays` (moyenne/médiane/écart-type), `style` (palette, daltonisme, annotations, thème). |
 | `POST /api/export/plot` | Exporte un graphique déjà généré (`ExportPlotRequest` : `kind`, `params` du graphique d'origine, `format: "png"|"svg"|"html"`). |
+| `POST /api/plot/multi-series` | Graphique multi-séries à axe Y secondaire optionnel (Phase 10) : `MultiSeriesPlotRequest` — `x_axis`, `series: [{y_column, y_axis: "left"|"right", plot_type: "scatter"|"line"|"bar"|"area", name, color}]` (1 à 10 séries). Utilisable comme `kind: "multi-series"` dans `POST /api/report/pdf`. |
 
 ## GroupBy & Pivot
 
@@ -164,9 +165,28 @@ L'encoding est validé **avant** l'ouverture du flux : une fois le premier octet
 parti, le statut HTTP l'est aussi, et une erreur se traduirait par un fichier
 tronqué sans explication.
 
-## Variables d'environnement (Phase 9)
+## Formats compressés (Phase 10)
+
+`POST /api/upload` accepte, en plus de CSV/Excel/JSON :
+
+| Extension | `format` renvoyé | Traitement |
+|---|---|---|
+| `.csv.gz` | `csv_gz` | Décompressé en octets CSV en clair dès l'upload, puis traité comme un `.csv` normal (même cascade Polars/pandas, même spill). |
+| `.csv.bz2` | `csv_bz2` | Idem, décompression `bz2`. |
+| `.csv.zip` | `csv_zip` | Premier fichier `.csv`/`.tsv`/`.txt` trouvé dans l'archive. |
+| `.parquet`, `.parquet.gz`, `.parquet.snappy`, `.parquet.zstd` | `parquet*` | Chargé intégralement à l'upload via Polars (`already_parsed: true`) — la codec de compression est interne au fichier Parquet, transparente pour le lecteur. |
+| `.feather` | `feather` | Arrow IPC, chargé à l'upload comme le Parquet. |
+
+Une décompression illimitée est un vecteur de déni de service classique (bombe
+de décompression) : la taille décompressée d'un CSV compressé est bornée par
+`DATAVORTEX_MAX_DECOMPRESSED_MB`, vérifiée en flux (sans jamais matérialiser
+plus que la limite en mémoire) plutôt qu'après coup.
+
+## Variables d'environnement (Phase 9-10)
 
 | Variable | Défaut | Effet |
 |---|---|---|
 | `DATAVORTEX_FAST_PARSE_MB` | `50` | Taille à partir de laquelle l'analyse CSV bascule sur Polars. |
 | `DATAVORTEX_SPILL_MB` | `50` | Taille à partir de laquelle le fichier source est déversé sur disque plutôt que conservé en mémoire. |
+| `DATAVORTEX_MAX_DECOMPRESSED_MB` | `500` | Taille maximale acceptée pour un CSV compressé une fois décompressé (Phase 10). Alignée par défaut sur la limite d'upload : la compression réduit le transfert réseau, pas le budget mémoire du pipeline. |
+| `DATAVORTEX_PROFILE` | *(désactivé)* | À `1`, journalise (module `datavortex.profiling`) le détail cProfile et le pic mémoire tracemalloc de l'agrégation et des statistiques avancées. Désactivé par défaut : le profilage a un coût réel. |

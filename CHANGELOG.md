@@ -2,6 +2,26 @@
 
 Toutes les phases de développement notables de DataVortex sont documentées ici, de la plus récente à la plus ancienne. Format inspiré de [Keep a Changelog](https://keepachangelog.com/), adapté au déroulé par phases de ce projet.
 
+## [Phase 10] — Formats compressés, graphiques multi-séries, audit de performance
+
+Mesures détaillées et méthode de reproduction : [specs/PHASE_10_BENCHMARK_RESULTS.md](specs/PHASE_10_BENCHMARK_RESULTS.md).
+
+### Ajouté
+- Upload de formats compressés (`backend/app/data_service.py`) : `.csv.gz`, `.csv.bz2`, `.csv.zip` (décompressés en octets CSV en clair dès l'upload, puis traités comme un `.csv` normal — même cascade Polars/pandas, même spill), `.parquet` (toute compression interne : snappy/gzip/zstd, transparente pour Polars), `.feather` (Arrow IPC). `POST /api/upload` renvoie désormais `format` (ex: `"csv_gz"`) et `file_info` (taille, compression, taille décompressée estimée).
+- Garde-fou contre les bombes de décompression : la taille décompressée d'un CSV compressé est bornée en flux (`DATAVORTEX_MAX_DECOMPRESSED_MB`, 500 Mo par défaut — aligné sur la limite d'upload), et rejetée avant d'avoir matérialisé plus que la limite en mémoire. Pour un zip, la taille déclarée dans l'archive est vérifiée avant toute décompression.
+- Graphiques multi-séries à axe Y secondaire (`POST /api/plot/multi-series`) : jusqu'à 10 séries indépendantes (colonne, type de trace, axe gauche/droite, couleur, nom), pour superposer par exemple un chiffre d'affaires et un nombre d'unités vendues sans que l'un écrase visuellement l'autre. Intégré au générateur de rapport PDF (`kind: "multi-series"`).
+- Tableau de bord multi-graphiques (onglet « Multi-graphiques », `frontend/src/components/MultiGraphDashboard.jsx`) : plusieurs graphiques multi-séries indépendants, disposition grille/1 colonne/2 colonnes, export groupé en un seul PDF (une page par graphique).
+- Profilage optionnel (`backend/app/profiling.py`, `DATAVORTEX_PROFILE=1`) : détail cProfile et pic mémoire tracemalloc de l'agrégation GroupBy et des statistiques avancées. No-op par défaut — le profilage a un coût réel, il n'a rien à faire actif en permanence.
+- Tests de non-régression de performance (`backend/tests/test_performance_regression.py`) sur un jeu de données de 300 000 lignes : GroupBy, statistiques et statistiques avancées restent chacun sous des seuils larges (5-10 s), et Polars reste mesurablement plus rapide que le moteur Python de pandas sur un CSV de 100 000 lignes.
+
+### Changé
+- Formats acceptés par la zone de dépôt (`UploadZone.jsx`) et limite d'upload affichée mise à jour (500 Mo, cohérente avec la Phase 9).
+
+### Notes
+- Audit de vectorisation : aucune boucle Python ligne à ligne trouvée sur un jeu de données complet. Les deux occurrences de `.iterrows()` du projet portent sur des tables déjà agrégées et bornées (aperçu, motifs de valeurs manquantes) ; `app/formulas.py` utilise `.apply(axis=1)` pour son interpréteur de formules AST, un choix architectural (sécurité, formules arbitraires) documenté et non reconsidéré ici — vectoriser un interpréteur générique serait un projet à part entière.
+- La représentation de travail reste pandas pour les analyses (groupby, filtres, stats), comme tranché et documenté en Phase 9 : un groupby sur 500 000 lignes y prenait déjà 35 ms, un gain marginal ne justifiant pas de convertir les vingt services qui la consomment vers Polars. Polars reste cantonné au rôle de moteur de *parsing* (CSV rapide, lecteur Parquet/Feather).
+- Le vrai gain des formats compressés n'est pas la vitesse de traitement (déjà réglée en Phase 9) mais le volume transféré sur le réseau : jusqu'à 82 % de moins pour un Parquet Zstandard face au CSV équivalent, pour un coût de décompression serveur négligeable.
+
 ## [Phase 9] — Performance sur les gros fichiers
 
 Mesures détaillées et méthode de reproduction : [specs/PHASE_9_BENCHMARK_RESULTS.md](specs/PHASE_9_BENCHMARK_RESULTS.md).

@@ -7,7 +7,7 @@ DataVortex est une plateforme interactive de visualisation et d'analyse de donn�
 ## Fonctionnalités
 
 ### 🎯 Import & exploration
-- Import CSV / Excel (.xls, .xlsx) / JSON avec détection automatique du séparateur et de l'encoding
+- Import CSV / Excel (.xls, .xlsx) / JSON avec détection automatique du séparateur et de l'encoding, formats compressés (.csv.gz/.bz2/.zip), Parquet (toute compression) et Feather
 - Aperçu paginé avec numéros de ligne (indices originaux préservés après filtrage), recherche, tri, redimensionnement de colonnes
 - Statistiques descriptives complètes, corrélations avec p-values (Pearson/Spearman/Kendall), analyse de distribution avec ajustement de lois
 - Profilage : score de qualité, détection d'anomalies, motifs de données manquantes, suggestions concrètes
@@ -17,6 +17,7 @@ DataVortex est une plateforme interactive de visualisation et d'analyse de donn�
 - 2D : nuage de points, ligne, heatmap, hexbin, barres groupées, bulles
 - 3D : nuage de points, surface
 - Avancé : pair plot, joint plot, ridge plot, essaim/strip
+- Multi-séries : plusieurs séries indépendantes (colonne, type de trace, couleur) sur un même graphique, avec axe Y secondaire optionnel ; tableau de bord multi-graphiques exportable en un seul PDF
 - Lignes de tendance (linéaire, polynomiale, LOWESS) avec bandes de confiance, palettes daltonisme-safe, annotations
 - Export PNG / SVG / HTML interactif
 
