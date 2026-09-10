@@ -17,8 +17,17 @@ from datetime import datetime
 import pandas as pd
 from fastapi import FastAPI, File, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
+from app.async_tasks import (
+    STATUS_DONE,
+    STATUS_ERROR,
+)
+from app.async_tasks import (
+    registry as task_registry,
+)
 from app.columns_service import apply_column_operation, apply_transform, describe_columns
+from app.data_engine import POLARS_AVAILABLE, load_csv, sniff_sample
 from app.errors import (
     AppError,
     app_error_handler,
@@ -39,6 +48,7 @@ from app.models import (
     AdvancedFilterRequest,
     AdvancedPlotRequest,
     ApplyFilterRequest,
+    AsyncGroupByRequest,
     ClassificationRequest,
     ClusteringRequest,
     ColumnOperationRequest,
@@ -64,16 +74,17 @@ from app.models import (
     Plot3DRequest,
     RegressionRequest,
     StatsExportRequest,
+    StreamExportRequest,
     TrainingScriptRequest,
     UploadResponse,
 )
+from app.monitoring import Timer, memory_usage, uptime_seconds
 from app.parsing import (
     CANDIDATE_SEPARATORS,
     detect_column_types,
     detect_encoding,
     detect_file_kind,
     detect_separator,
-    parse_csv,
     parse_excel,
     parse_json,
 )
@@ -83,13 +94,16 @@ from app.plotting_service import build_advanced_figure
 from app.profile_service import detailed_profile
 from app.report import build_report
 from app.serialize import dataframe_to_records
-from app.session_store import Session, store
+from app.session_store import SPILL_THRESHOLD_BYTES, Session, store
 from app.stats import column_summary, dataframe_summary
 from app.stats_service import advanced_stats, stats_export_table
 from app.stats_tests_service import run_statistical_test
+from app.streaming import csv_stream_metrics, iter_csv_chunks, stream_headers, validate_encoding
 from app.table_service import read_rows
 
-MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024  # 100MB
+# Relevé de 100MB à 500MB en Phase 9 : le chemin d'analyse rapide (Polars) et le
+# déversement sur disque rendent cette taille tenable dans le budget mémoire.
+MAX_UPLOAD_SIZE_BYTES = 500 * 1024 * 1024  # 500MB
 PREVIEW_ROWS = 100
 
 app = FastAPI(title="DataVortex API", version="1.0.4")
@@ -122,7 +136,15 @@ def _get_parsed_session_or_error(session_id: str) -> Session:
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"status": "ok"}
+    """État du serveur, avec empreinte mémoire et charge de travail (Phase 9, §6.2)."""
+    return {
+        "status": "ok",
+        "version": app.version,
+        "uptime_seconds": uptime_seconds(),
+        "memory": memory_usage(),
+        "tasks": task_registry.stats(),
+        "polars_available": POLARS_AVAILABLE,
+    }
 
 
 @app.delete("/api/session/{session_id}")
@@ -148,7 +170,11 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
 
     filename = file.filename or "fichier_sans_nom"
     file_kind = detect_file_kind(filename)
-    encoding = detect_encoding(raw_bytes) if file_kind != "excel" else "n/a"
+    # La détection ne travaille que sur les premiers kilo-octets : chardet et la
+    # détection de séparateur n'ont besoin que de quelques lignes, alors que les
+    # faire tourner sur 500MB coûte plusieurs secondes et autant de mémoire.
+    sample = sniff_sample(raw_bytes)
+    encoding = detect_encoding(sample) if file_kind != "excel" else "n/a"
 
     detected_separator = None
     raw_preview: list[str] = []
@@ -156,9 +182,9 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
     df = None
 
     if file_kind == "csv":
-        text = raw_bytes.decode(encoding, errors="replace")
-        detected_separator = detect_separator(text)
-        raw_preview = text.splitlines()[:5]
+        sample_text = sample.decode(encoding, errors="replace")
+        detected_separator = detect_separator(sample_text)
+        raw_preview = sample_text.splitlines()[:5]
     elif file_kind == "excel":
         try:
             df = parse_excel(raw_bytes)
@@ -178,6 +204,10 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
         raw_bytes=raw_bytes,
         encoding=encoding,
         detected_separator=detected_separator,
+        # Excel et JSON sont déjà analysés ici : conserver leurs octets n'a plus
+        # d'utilité, mais ils sont relâchés par le garbage collector à la sortie.
+        # Seul un CSV volumineux, ré-analysable à la demande, mérite le disque.
+        spill=(file_kind == "csv" and len(raw_bytes) >= SPILL_THRESHOLD_BYTES),
     )
     if df is not None:
         session.df = df
@@ -202,9 +232,17 @@ def parse_session(body: ParseRequest) -> ParseResponse:
     if not body.separator:
         raise AppError(400, "MISSING_SEPARATOR", "Le séparateur est requis.")
 
+    engine = "pandas-python"
     if session.file_kind == "csv":
         try:
-            df = parse_csv(session.raw_bytes, session.encoding, body.separator)
+            with Timer() as timer:
+                df, engine = load_csv(
+                    session.raw_bytes or None,
+                    session.encoding,
+                    body.separator,
+                    path=session.source_path(),
+                    size_bytes=session.source_size_bytes or None,
+                )
         except ValueError as exc:
             raise AppError(400, "PARSE_ERROR", str(exc))
 
@@ -232,6 +270,7 @@ def parse_session(body: ParseRequest) -> ParseResponse:
         n_columns=int(df.shape[1]),
         columns=[str(c) for c in df.columns],
         column_types=detect_column_types(df),
+        metrics=timer.metrics(rows=int(df.shape[0]), engine=engine) if session.file_kind == "csv" else None,
     )
 
 
@@ -791,14 +830,26 @@ def _run_groupby_for(body) -> dict:
     )
 
 
-@app.post("/api/groupby")
-def groupby(body: GroupByRequest) -> dict:
-    """Agrège une ou plusieurs colonnes par groupe, avec tableau et graphique."""
-    result = _run_groupby_for(body)
+def _groupby_payload(body) -> dict:
+    """Résultat d'agrégation entièrement sérialisable, mesures comprises.
+
+    Extrait de la route pour être exécutable tel quel dans un thread de tâche :
+    le chemin synchrone et le chemin asynchrone produisent ainsi exactement la
+    même charge utile.
+    """
+    with Timer() as timer:
+        result = _run_groupby_for(body)
     result.pop("table")
     figure = result.pop("figure")
     result["figure"] = _figure_to_response(figure) if figure is not None else None
+    result["metrics"] = timer.metrics(rows=result.get("group_count"))
     return result
+
+
+@app.post("/api/groupby")
+def groupby(body: GroupByRequest) -> dict:
+    """Agrège une ou plusieurs colonnes par groupe, avec tableau et graphique."""
+    return _groupby_payload(body)
 
 
 @app.post("/api/groupby/export")
@@ -885,3 +936,97 @@ def column_transform(body: ColumnTransformRequest) -> dict:
     """Dérive une colonne : découpage en classes, encodage, décalage, fenêtre glissante."""
     session = _get_parsed_session_or_error(body.session_id)
     return apply_transform(session, body.transform, body.source, body.params, body.new_name, body.replace)
+
+
+# --- Opérations asynchrones (Phase 9) ------------------------------------------
+
+@app.post("/api/groupby/async")
+def groupby_async(body: AsyncGroupByRequest) -> dict:
+    """Lance une agrégation en arrière-plan et rend immédiatement son identifiant.
+
+    La validation de la session est faite ici, de façon synchrone : une session
+    inconnue doit répondre 404 tout de suite plutôt que de produire une tâche
+    condamnée que le client devrait interroger pour découvrir l'échec.
+    """
+    _get_parsed_session_or_error(body.session_id)
+    task = task_registry.submit("groupby", _groupby_payload, body)
+    return {"task_id": task.task_id, "status": task.status, "kind": task.kind}
+
+
+@app.get("/api/tasks/{task_id}")
+def get_task(task_id: str) -> dict:
+    """État d'une tâche de fond, et son résultat une fois disponible."""
+    task = task_registry.get(task_id)
+    if task is None:
+        raise AppError(
+            404,
+            "TASK_NOT_FOUND",
+            "Cette tâche est inconnue ou son résultat a expiré. Relancez le calcul.",
+        )
+
+    payload = task.to_status_dict()
+    if task.status == STATUS_DONE:
+        payload["data"] = task.result
+    elif task.status == STATUS_ERROR:
+        # L'erreur métier est rendue dans la même forme que celle des routes
+        # synchrones, pour que le client n'ait qu'un seul format à traiter.
+        payload["error"] = {"code": task.error_code, "message": task.error}
+    return payload
+
+
+@app.delete("/api/tasks/{task_id}")
+def cancel_task(task_id: str) -> dict:
+    """Abandonne une tâche : son résultat sera écarté même si le calcul aboutit."""
+    cancelled = task_registry.cancel(task_id)
+    return {"task_id": task_id, "cancelled": cancelled}
+
+
+# --- Export en flux (Phase 9) ---------------------------------------------------
+
+@app.get("/api/export/csv/estimate/{session_id}")
+def estimate_csv_export(session_id: str) -> dict:
+    """Volume approximatif de l'export, pour prévenir avant un téléchargement lourd."""
+    session = _get_parsed_session_or_error(session_id)
+    return {"session_id": session_id, **csv_stream_metrics(session.active_df())}
+
+
+@app.post("/api/export/csv/stream")
+def export_csv_stream(body: StreamExportRequest) -> StreamingResponse:
+    """Exporte le jeu de données courant par tranches, sans pic mémoire.
+
+    Contrairement à /api/export/csv, le CSV n'est jamais construit en entier :
+    les tranches partent au fil de leur formatage.
+    """
+    session = _get_parsed_session_or_error(body.session_id)
+    df = session.active_df()
+
+    if not body.separator:
+        raise AppError(400, "MISSING_SEPARATOR", "Le séparateur d'export est requis.")
+
+    # Le statut HTTP part avec le premier octet : tout ce qui peut échouer doit
+    # être vérifié avant d'ouvrir le flux, sinon l'erreur se traduirait par un
+    # fichier tronqué sans message.
+    try:
+        validate_encoding(body.encoding)
+    except LookupError:
+        raise AppError(400, "INVALID_ENCODING", f"Encoding inconnu : '{body.encoding}'.")
+
+    header_comment = None
+    if body.include_filter_comment and session.active_filter is not None:
+        filter_json = json.dumps(session.active_filter.model_dump(), ensure_ascii=False)
+        header_comment = f"Filtre appliqué : {filter_json}"
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%Hh%M")
+    filename = f"data_{timestamp}.csv"
+
+    return StreamingResponse(
+        iter_csv_chunks(
+            df,
+            separator=body.separator,
+            encoding=body.encoding,
+            chunk_rows=body.chunk_rows,
+            header_comment=header_comment,
+        ),
+        media_type="text/csv",
+        headers=stream_headers(filename),
+    )

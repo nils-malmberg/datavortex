@@ -19,7 +19,12 @@ def _upload_and_parse():
 def test_health():
     resp = client.get("/api/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+    body = resp.json()
+    assert body["status"] == "ok"
+    # Phase 9 : la sonde porte aussi les indicateurs de charge du serveur.
+    assert body["uptime_seconds"] >= 0
+    assert body["memory"]["rss_mb"] > 0
+    assert body["tasks"]["total"] >= 0
 
 
 def test_upload_and_parse():

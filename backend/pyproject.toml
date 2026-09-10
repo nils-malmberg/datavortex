@@ -7,6 +7,14 @@ dependencies = [
     "fastapi==0.104.1",
     "uvicorn[standard]==0.24.0",
     "pandas==2.1.0",
+    # Phase 9 : moteur d'analyse CSV rapide pour les gros fichiers. Pandas reste
+    # la représentation de travail de toute l'application ; Polars n'intervient
+    # qu'au chargement, où il est 10 à 50x plus rapide que le moteur Python.
+    # pyarrow est requis par `polars.DataFrame.to_pandas()` (pont Arrow).
+    "polars==1.44.2",
+    "pyarrow==25.0.1",
+    # Empreinte mémoire du processus remontée par /api/health (Phase 9, §6.2).
+    "psutil==7.2.2",
     "numpy==1.24.0",
     "scipy==1.11.0",
     "plotly==5.17.0",
