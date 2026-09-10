@@ -227,3 +227,31 @@ def test_report_includes_ml_plot():
     )
     assert resp.status_code == 200
     assert resp.content[:4] == b"%PDF"
+
+
+def test_report_includes_multi_series_plot():
+    """Phase 10 : un graphique multi-séries peut être inclus dans un rapport PDF."""
+    session_id = _upload_and_parse()
+    resp = client.post(
+        "/api/report/pdf",
+        json={
+            "session_id": session_id,
+            "sections": ["plots"],
+            "plots": [
+                {
+                    "kind": "multi-series",
+                    "params": {
+                        "x_axis": "name",
+                        "series": [
+                            {"y_column": "age", "y_axis": "left", "plot_type": "bar"},
+                            {"y_column": "score", "y_axis": "right", "plot_type": "line"},
+                        ],
+                    },
+                    "title": "Âge et score par personne",
+                }
+            ],
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert resp.content[:4] == b"%PDF"

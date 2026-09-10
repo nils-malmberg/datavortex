@@ -28,6 +28,14 @@ from app.async_tasks import (
 )
 from app.columns_service import apply_column_operation, apply_transform, describe_columns
 from app.data_engine import POLARS_AVAILABLE, load_csv, sniff_sample
+from app.data_service import (
+    COLUMNAR_KINDS,
+    base_kind,
+    decompress_csv,
+    detect_format,
+    get_file_info,
+    load_columnar,
+)
 from app.errors import (
     AppError,
     app_error_handler,
@@ -64,6 +72,7 @@ from app.models import (
     MergeRequest,
     ModelExportRequest,
     ModelMetadataRequest,
+    MultiSeriesPlotRequest,
     NeuralNetworkRequest,
     ParseRequest,
     ParseResponse,
@@ -84,15 +93,15 @@ from app.parsing import (
     CANDIDATE_SEPARATORS,
     detect_column_types,
     detect_encoding,
-    detect_file_kind,
     detect_separator,
     parse_excel,
     parse_json,
 )
 from app.pivot_service import run_pivot
-from app.plotting import build_1d_figure, build_2d_figure, build_3d_figure
+from app.plotting import build_1d_figure, build_2d_figure, build_3d_figure, build_multi_series_figure
 from app.plotting_service import build_advanced_figure
 from app.profile_service import detailed_profile
+from app.profiling import profile_operation
 from app.report import build_report
 from app.serialize import dataframe_to_records
 from app.session_store import SPILL_THRESHOLD_BYTES, Session, store
@@ -170,12 +179,29 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
         )
 
     filename = file.filename or "fichier_sans_nom"
-    file_kind = detect_file_kind(filename)
+    try:
+        fmt = detect_format(filename)
+    except ValueError as exc:
+        raise AppError(400, "UNSUPPORTED_FORMAT", str(exc))
+    file_kind = base_kind(fmt)
+    file_info = get_file_info(filename, len(raw_bytes), fmt)
+
+    # Un CSV compressé est ramené à des octets texte en clair ici, une bonne
+    # fois pour toutes : tout ce qui suit (sniffing, cascade Polars/pandas,
+    # spill, re-parsing sur changement de séparateur) continue d'ignorer que le
+    # fichier reçu était gzippé/zippé/bz2.
+    if file_kind == "csv" and fmt != "csv":
+        try:
+            raw_bytes = decompress_csv(raw_bytes, fmt)
+        except ValueError as exc:
+            raise AppError(400, "DECOMPRESS_ERROR", str(exc))
+        file_info["uncompressed_size_mb"] = round(len(raw_bytes) / 1024 / 1024, 2)
+
     # La détection ne travaille que sur les premiers kilo-octets : chardet et la
     # détection de séparateur n'ont besoin que de quelques lignes, alors que les
     # faire tourner sur 500MB coûte plusieurs secondes et autant de mémoire.
-    sample = sniff_sample(raw_bytes)
-    encoding = detect_encoding(sample) if file_kind != "excel" else "n/a"
+    sample = sniff_sample(raw_bytes) if file_kind == "csv" else b""
+    encoding = detect_encoding(sample) if file_kind == "csv" else "n/a"
 
     detected_separator = None
     raw_preview: list[str] = []
@@ -198,6 +224,12 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
         except Exception as exc:
             raise AppError(400, "PARSE_ERROR", f"Impossible de lire le fichier JSON : {exc}")
         already_parsed = True
+    elif file_kind in COLUMNAR_KINDS:
+        try:
+            df = load_columnar(raw_bytes, fmt)
+        except ValueError as exc:
+            raise AppError(400, "PARSE_ERROR", str(exc))
+        already_parsed = True
 
     session = store.create(
         filename=filename,
@@ -205,9 +237,10 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
         raw_bytes=raw_bytes,
         encoding=encoding,
         detected_separator=detected_separator,
-        # Excel et JSON sont déjà analysés ici : conserver leurs octets n'a plus
-        # d'utilité, mais ils sont relâchés par le garbage collector à la sortie.
-        # Seul un CSV volumineux, ré-analysable à la demande, mérite le disque.
+        # Excel, JSON et les formats colonnaires sont déjà analysés ici :
+        # conserver leurs octets n'a plus d'utilité, mais ils sont relâchés par
+        # le garbage collector à la sortie. Seul un CSV volumineux, ré-analysable
+        # à la demande, mérite le disque.
         spill=(file_kind == "csv" and len(raw_bytes) >= SPILL_THRESHOLD_BYTES),
     )
     if df is not None:
@@ -223,6 +256,8 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
         available_separators=list(CANDIDATE_SEPARATORS),
         raw_preview=raw_preview,
         already_parsed=already_parsed,
+        format=fmt,
+        file_info=file_info,
     )
 
 
@@ -491,6 +526,14 @@ def plot_3d(body: Plot3DRequest) -> dict:
     return {"figure": _figure_to_response(fig)}
 
 
+@app.post("/api/plot/multi-series")
+def plot_multi_series(body: MultiSeriesPlotRequest) -> dict:
+    """Graphique multi-séries avec axe Y secondaire optionnel (Phase 10)."""
+    session = _get_parsed_session_or_error(body.session_id)
+    fig = build_multi_series_figure(session.active_df(), body)
+    return {"figure": _figure_to_response(fig)}
+
+
 _PLOT_BUILDERS = {
     "1d": (Plot1DRequest, build_1d_figure),
     "2d": (Plot2DRequest, build_2d_figure),
@@ -742,6 +785,7 @@ def _table_response(table: pd.DataFrame, fmt: str, precision: int, basename: str
 
 
 @app.get("/api/stats/{session_id}/advanced")
+@profile_operation
 def get_advanced_stats(session_id: str, method: str = "pearson") -> dict:
     """Corrélations (r + p-values), distributions, normalité et données manquantes."""
     session = _get_parsed_session_or_error(session_id)
@@ -832,6 +876,7 @@ def get_rows(
 
 # --- Groupby & agrégations (Phase 8) -------------------------------------------
 
+@profile_operation
 def _run_groupby_for(body) -> tuple[dict, int]:
     """Exécute l'agrégation et rend aussi le nombre de lignes lues.
 

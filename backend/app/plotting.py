@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 from scipy import stats as scipy_stats
 
 from app.errors import AppError, column_not_found
-from app.models import Plot1DRequest, Plot2DRequest, Plot3DRequest
+from app.models import MultiSeriesPlotRequest, Plot1DRequest, Plot2DRequest, Plot3DRequest
 from app.parsing import detect_column_type
 
 MAX_CATEGORIES = 20
@@ -330,4 +330,81 @@ def build_3d_figure(df: pd.DataFrame, req: Plot3DRequest) -> go.Figure:
     else:  # pragma: no cover
         raise AppError(400, "UNKNOWN_PLOT_TYPE", f"Type de graphique 3D inconnu : {req.plot_type}")
 
+    return fig
+
+
+# --------------------------------------------------------------------------
+# Multi-séries à double axe Y (Phase 10)
+# --------------------------------------------------------------------------
+
+def _axis_title(series: list, side: str) -> str:
+    """Titre d'axe déduit des séries qui y sont rattachées.
+
+    Une seule série sur l'axe -> son nom. Plusieurs -> jointes par une virgule,
+    ce qui reste plus lisible qu'un générique "Valeur" dès que l'utilisateur a
+    donné des noms explicites à ses séries.
+    """
+    names = [s.name or s.y_column for s in series if s.y_axis == side]
+    return ", ".join(names) if names else ("Valeur" if side == "left" else "")
+
+
+def build_multi_series_figure(df: pd.DataFrame, req: MultiSeriesPlotRequest) -> go.Figure:
+    """Un graphique, plusieurs séries Y, avec axe Y secondaire optionnel.
+
+    Chaque série choisit indépendamment sa colonne Y, son type de trace et son
+    axe (gauche/droite) : c'est ce qui permet de superposer par exemple un
+    chiffre d'affaires (échelle €) et un nombre d'unités vendues (échelle
+    entière bien plus petite) sur un même graphique sans que l'une écrase
+    visuellement l'autre.
+    """
+    _require_columns(df, [req.x_axis])
+    for series in req.series:
+        _require_columns(df, [series.y_column])
+        _require_numeric(df, series.y_column)
+
+    has_secondary = any(s.y_axis == "right" for s in req.series)
+    fig = go.Figure()
+
+    for i, series in enumerate(req.series):
+        color = series.color or PALETTE[i % len(PALETTE)]
+        name = series.name or series.y_column
+        yaxis_ref = "y2" if series.y_axis == "right" else "y"
+        # Une ligne/aire non triée sur X produit un tracé en zigzag illisible ;
+        # un scatter ou un bar n'a pas ce problème (pas de segments reliant les points).
+        sub = df.sort_values(by=req.x_axis) if series.plot_type in ("line", "area") else df
+
+        if series.plot_type == "bar":
+            fig.add_trace(go.Bar(
+                x=sub[req.x_axis], y=sub[series.y_column], name=name,
+                marker_color=color, yaxis=yaxis_ref,
+            ))
+        elif series.plot_type == "area":
+            fig.add_trace(go.Scatter(
+                x=sub[req.x_axis], y=sub[series.y_column], name=name, mode="lines",
+                fill="tozeroy", line=dict(color=color), yaxis=yaxis_ref,
+            ))
+        elif series.plot_type == "line":
+            fig.add_trace(go.Scatter(
+                x=sub[req.x_axis], y=sub[series.y_column], name=name, mode="lines",
+                line=dict(color=color), yaxis=yaxis_ref,
+            ))
+        else:  # scatter
+            fig.add_trace(go.Scatter(
+                x=sub[req.x_axis], y=sub[series.y_column], name=name, mode="markers",
+                marker=dict(color=color), yaxis=yaxis_ref,
+            ))
+
+    layout: dict = {
+        "title": _default_title(f"{req.x_axis} — {len(req.series)} série(s)", req.title),
+        "xaxis": {"title": req.x_axis},
+        "yaxis": {"title": _axis_title(req.series, "left")},
+        "legend": {"orientation": "h", "y": -0.2},
+    }
+    if has_secondary:
+        layout["yaxis2"] = {
+            "title": _axis_title(req.series, "right"),
+            "overlaying": "y",
+            "side": "right",
+        }
+    fig.update_layout(**layout)
     return fig

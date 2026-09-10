@@ -75,6 +75,27 @@ class Plot3DRequest(BaseModel):
     title: Optional[str] = None
 
 
+# --- Graphiques multi-séries à double axe Y (Phase 10) ------------------------
+
+SeriesPlotType = Literal["scatter", "line", "bar", "area"]
+YAxisSide = Literal["left", "right"]
+
+
+class SeriesSpec(BaseModel):
+    y_column: str
+    y_axis: YAxisSide = "left"
+    plot_type: SeriesPlotType = "scatter"
+    name: Optional[str] = None
+    color: Optional[str] = None
+
+
+class MultiSeriesPlotRequest(BaseModel):
+    session_id: str
+    title: Optional[str] = None
+    x_axis: str
+    series: list[SeriesSpec] = Field(..., min_length=1, max_length=10)
+
+
 class ExportPlotRequest(BaseModel):
     session_id: str
     kind: Literal["1d", "2d", "3d", "ml", "advanced"]
@@ -134,7 +155,7 @@ ReportSection = Literal["summary", "stats", "preview", "plots", "correlations", 
 
 
 class ReportPlotSpec(BaseModel):
-    kind: Literal["1d", "2d", "3d", "ml", "advanced", "groupby", "pivot"]
+    kind: Literal["1d", "2d", "3d", "ml", "advanced", "groupby", "pivot", "multi-series"]
     params: dict
     title: Optional[str] = None
 

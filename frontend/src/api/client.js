@@ -37,6 +37,12 @@ export function plot3D(sessionId, params) {
   return api.post('/plot/3d', { session_id: sessionId, ...params })
 }
 
+// --- Graphiques multi-séries à double axe Y (Phase 10) -------------------------
+
+export function plotMultiSeries(sessionId, { title, xAxis, series }) {
+  return api.post('/plot/multi-series', { session_id: sessionId, title, x_axis: xAxis, series })
+}
+
 export function exportPlot(sessionId, kind, params, format, { width = 900, height = 600 } = {}) {
   return api.post(
     '/export/plot',
