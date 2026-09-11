@@ -8,7 +8,43 @@ on:
 
 jobs:
   backend:
-    name: Backend (pytest + ruff)
+    # Phase 10.3 : les dépendances sont des intervalles ; le lock (versions
+    # les plus récentes) est testé sur chaque Python de requires-python.
+    name: Backend (pytest + ruff, Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install ${{ matrix.python }}
+
+      - name: Install dependencies
+        run: uv sync --python ${{ matrix.python }} --extra dev
+
+      - name: Lint with ruff
+        run: uv run ruff check .
+
+      - name: Run tests
+        run: uv run pytest -v
+
+  backend-lowest:
+    # L'autre extrémité des intervalles : chaque dépendance directe à son
+    # plancher. Si ce job casse, c'est qu'un plancher de pyproject.toml est
+    # trop bas (ou que le code vient d'utiliser une API plus récente).
+    name: Backend (lowest allowed versions)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -25,14 +61,16 @@ jobs:
       - name: Set up Python
         run: uv python install 3.10
 
-      - name: Install dependencies
-        run: uv sync --extra dev
+      - name: Resolve every direct dependency to its floor
+        run: uv pip compile --resolution lowest-direct --python-version 3.10 --extra dev pyproject.toml -o lowest.txt
 
-      - name: Lint with ruff
-        run: uv run ruff check .
+      - name: Install
+        run: |
+          uv venv --python 3.10 .venv-lowest
+          uv pip install --python .venv-lowest/bin/python -r lowest.txt
 
       - name: Run tests
-        run: uv run pytest -v
+        run: .venv-lowest/bin/python -m pytest -q -p no:cacheprovider
 
   frontend:
     name: Frontend (lint + build)
