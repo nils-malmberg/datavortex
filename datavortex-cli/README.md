@@ -6,15 +6,16 @@ une seule commande démarre l'API FastAPI et sert le frontend React pré-compil�
 Ce dossier n'est pas le code source de l'application (voir `../backend` et `../frontend`) —
 c'est l'emballage qui les distribue ensemble comme un exécutable unique.
 
-`datavortex/static/` (le frontend compilé) est **commité dans le dépôt**, pas généré à l'installation — `uv tool install` n'a pas besoin de Node.js. Vous ne devez le régénérer que si vous modifiez le frontend :
+`datavortex/static/` (le frontend compilé) est **commité dans le dépôt**, pas généré à l'installation — `uv tool install` n'a pas besoin de Node.js. Il doit donc être régénéré **à chaque modification du frontend**, sinon les utilisateurs installent l'interface d'avant (c'est arrivé entre les Phases 9 et 10.1) :
 
 ```bash
-cd ../frontend && npm install && npm run build
-rm -rf ../datavortex-cli/datavortex/static
-mkdir -p ../datavortex-cli/datavortex/static
-cp -r dist/* ../datavortex-cli/datavortex/static/
-# puis commitez datavortex-cli/datavortex/static/
+# à la racine du dépôt
+./build.sh        # macOS / Linux
+.\build.ps1       # Windows
+git add datavortex-cli/datavortex/static && git commit -m "build: rebuild frontend"
 ```
+
+`tests/test_bundle.py` (exécuté en CI) échoue si le bundle commité ne contient pas les fonctionnalités récentes du frontend.
 
 ## Installation locale (développement du paquet CLI lui-même)
 
