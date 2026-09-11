@@ -50,6 +50,7 @@ class Session:
     source_size_bytes: int = 0
     detected_separator: Optional[str] = None
     separator: Optional[str] = None
+    separator_type: str = "preset"
     df: Optional[pd.DataFrame] = None
     active_filter: Optional[object] = None
     filtered_df: Optional[pd.DataFrame] = None

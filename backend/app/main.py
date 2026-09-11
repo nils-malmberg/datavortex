@@ -29,7 +29,7 @@ from app.async_tasks import (
 )
 from app.cache import cache
 from app.columns_service import apply_column_operation, apply_transform, describe_columns
-from app.data_engine import POLARS_AVAILABLE, load_csv, sniff_sample
+from app.data_engine import POLARS_AVAILABLE, load_csv, sniff_sample, validate_regex_separator
 from app.data_service import (
     COLUMNAR_KINDS,
     base_kind,
@@ -297,6 +297,13 @@ def parse_session(body: ParseRequest) -> ParseResponse:
     if not body.separator:
         raise AppError(400, "MISSING_SEPARATOR", "Le séparateur est requis.")
 
+    is_regex = body.separator_type == "regex"
+    if is_regex:
+        try:
+            validate_regex_separator(body.separator)
+        except ValueError as exc:
+            raise AppError(400, "INVALID_SEPARATOR_REGEX", str(exc))
+
     engine = "pandas-python"
     if session.file_kind == "csv":
         try:
@@ -307,6 +314,7 @@ def parse_session(body: ParseRequest) -> ParseResponse:
                     body.separator,
                     path=session.source_path(),
                     size_bytes=session.source_size_bytes or None,
+                    regex=is_regex,
                 )
         except ValueError as exc:
             raise AppError(400, "PARSE_ERROR", str(exc))
@@ -326,11 +334,13 @@ def parse_session(body: ParseRequest) -> ParseResponse:
 
     session.df = df
     session.separator = body.separator
+    session.separator_type = body.separator_type
     session.touch()
 
     return ParseResponse(
         session_id=session.session_id,
         separator=session.separator,
+        separator_type=session.separator_type,
         n_rows=int(df.shape[0]),
         n_columns=int(df.shape[1]),
         columns=[str(c) for c in df.columns],

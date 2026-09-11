@@ -13,8 +13,8 @@ export function uploadFile(file) {
   })
 }
 
-export function parseFile(sessionId, separator) {
-  return api.post('/parse', { session_id: sessionId, separator })
+export function parseFile(sessionId, separator, separatorType = 'preset') {
+  return api.post('/parse', { session_id: sessionId, separator, separator_type: separatorType })
 }
 
 export function getPreview(sessionId) {
