@@ -1,48 +1,70 @@
 [project]
 name = "datavortex-backend"
-version = "1.2.1"
+version = "1.2.3"
 description = "DataVortex - Backend FastAPI pour visualisation et analyse de données"
-requires-python = ">=3.10,<3.12"  # tensorflow-cpu/tensorflow-macos==2.15.0 n'ont pas de wheels au-delà de cp311
+# Phase 10.3 : bornes larges plutôt que versions figées, pour que le paquet
+# s'installe depuis un miroir d'entreprise qui n'a pas exactement nos wheels.
+# Plancher = plus ancienne version avec laquelle la suite de tests passe
+# (`uv lock --resolution lowest-direct`), plafond = prochaine version majeure.
+# La matrice réellement testée est dans COMPATIBILITY.md.
+requires-python = ">=3.10,<3.13"
 dependencies = [
-    "fastapi==0.104.1",
-    "uvicorn[standard]==0.24.0",
-    "pandas==2.1.0",
+    "fastapi>=0.100.0,<1.0.0",
+    "uvicorn[standard]>=0.24.0,<1.0.0",
+    "pandas>=2.1.0,<3.0.0",
     # Phase 9 : moteur d'analyse CSV rapide pour les gros fichiers. Pandas reste
     # la représentation de travail de toute l'application ; Polars n'intervient
     # qu'au chargement, où il est 10 à 50x plus rapide que le moteur Python.
+    # Le code cible l'API 1.x (`truncate_ragged_lines`, `separator=`).
     # pyarrow est requis par `polars.DataFrame.to_pandas()` (pont Arrow).
-    "polars==1.44.1",
-    "pyarrow==25.0.1",
+    "polars>=1.0.0,<2.0.0",
+    "pyarrow>=12.0.0,<30.0.0",
     # Empreinte mémoire du processus remontée par /api/health (Phase 9, §6.2).
-    "psutil==7.2.2",
-    "numpy==1.24.0",
-    "scipy==1.11.0",
-    "plotly==5.17.0",
-    "python-multipart==0.0.6",
-    "chardet==5.2.0",
-    "openpyxl==3.1.2",
-    "kaleido==0.2.1",
-    "reportlab==4.2.5",
-    "scikit-learn==1.3.2",
-    "matplotlib==3.8.2",
-    "jinja2==3.1.4",
-    "skl2onnx==1.20.0",
-    "onnx==1.16.1",
-    # tensorflow-cpu ne publie pas de wheel macOS ARM64 (Apple Silicon) —
-    # seul tensorflow-macos (fork officiel Apple) en fournit un, et à
-    # l'inverse il ne publie pas de wheel x86_64. D'où le partage par
-    # architecture plutôt qu'une seule ligne : les deux fournissent le même
-    # module `tensorflow`, donc aucun changement de code n'est nécessaire.
-    "tensorflow-cpu==2.15.0; sys_platform != 'darwin' or platform_machine != 'arm64'",
-    "tensorflow-macos==2.15.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "psutil>=5.9.0,<8.0.0",
+    "numpy>=1.24.0,<3.0.0",
+    # SciPy 1.19 retirera `critical_values`/`significance_level` du résultat
+    # d'`anderson` (avertissement émis depuis 1.17), dont dépendent nos tests
+    # de normalité : plafond explicite tant que ce format n'est pas revu.
+    "scipy>=1.10.0,<1.19.0",
+    # kaleido 1.x exige un Chrome installé pour exporter les images : on reste
+    # sur 0.2.x, autonome, et sur plotly 5 qui le pilote encore.
+    "plotly>=5.10.0,<6.0.0",
+    "kaleido>=0.2.1,<1.0.0",
+    "python-multipart>=0.0.6,<0.1.0",
+    "chardet>=4.0.0,<6.0.0",
+    "openpyxl>=3.1.0,<4.0.0",
+    "reportlab>=3.6.5,<5.0.0",
+    "scikit-learn>=1.2.0,<2.0.0",
+    "matplotlib>=3.7.0,<4.0.0",
+    "jinja2>=3.1.2,<4.0.0",
+    "skl2onnx>=1.16.0,<2.0.0",
+    "onnx>=1.14.0,<2.0.0",
+    # TensorFlow : le module est le même, mais les wheels diffèrent par
+    # plateforme. tensorflow-cpu (léger) couvre Linux et Windows ; sur macOS
+    # Apple Silicon seul le paquet `tensorflow` complet a des wheels arm64
+    # (tensorflow-macos, l'ancien fork Apple, s'arrête à 2.16) ; sur macOS
+    # Intel, plus aucun wheel après 2.16. 2.16+ apporte Keras 3 et Python 3.12.
+    "tensorflow-cpu>=2.15.0,<2.21.0; sys_platform != 'darwin'",
+    "tensorflow>=2.15.0,<2.21.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "tensorflow-cpu>=2.15.0,<2.17.0; sys_platform == 'darwin' and platform_machine != 'arm64'",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest==7.4.0",
-    "black==23.11.0",
-    "httpx==0.25.0",
-    "ruff==0.6.9",
+    "pytest>=7.4.0,<9.0.0",
+    "httpx>=0.25.0,<1.0.0",
+    "ruff>=0.6.0,<1.0.0",
+]
+
+# uv verrouille une seule résolution pour toutes les plateformes ; sans cette
+# liste il peut choisir une version qui n'a de wheel que pour une architecture
+# exotique (kaleido 0.2.1.post1 n'existe qu'en armv7l) et l'installation échoue.
+[tool.uv]
+required-environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
 ]
 
 [build-system]
