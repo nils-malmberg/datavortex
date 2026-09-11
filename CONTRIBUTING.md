@@ -99,3 +99,5 @@ En contribuant, vous acceptez que vos contributions soient distribuées sous lic
 1. `python scripts/sync-versions.py 1.2.X` — aligne les neuf numéros de version du dépôt (backend, CLI, frontend et leurs lockfiles, README). Sans argument, le script vérifie seulement ; la CI l'exécute ainsi.
 2. `./build.sh` (ou `.\build.ps1`) — recompile le frontend dans `datavortex-cli/datavortex/static/`. `uv tool install` livre ce dossier tel quel, sans lancer Node : l'oublier livre l'interface précédente.
 3. Ajoutez l'entrée dans `CHANGELOG.md`, commitez le tout, puis `git tag -a v1.2.X`.
+
+Les dépendances Python sont déclarées par intervalles (`>=plancher,<plafond`), jamais figées — `backend/tests/test_dependencies.py` le vérifie. Pour relever un plancher ou un plafond, ou après avoir utilisé une API récente d'une dépendance, suivez [backend/COMPATIBILITY.md](backend/COMPATIBILITY.md) : la CI teste les deux extrémités (job `backend-lowest` pour les planchers, matrice Python 3.10–3.12 pour le lockfile).

@@ -68,7 +68,7 @@ uv tool install "git+https://github.com/nils-malmberg/datavortex.git#subdirector
 datavortex
 ```
 
-Fonctionne nativement sur Apple Silicon (M1/M2/M3/M4) comme sur Mac Intel, sans émulation Rosetta : `tensorflow-cpu` (utilisé par défaut) ne publie pas de wheel ARM64, `uv` sélectionne donc automatiquement `tensorflow-macos` (le fork officiel Apple, avec accélération Metal) à la place sur Apple Silicon — c'est transparent, vous n'avez rien à faire de spécial.
+Fonctionne nativement sur Apple Silicon (M1/M2/M3/M4) comme sur Mac Intel, sans émulation Rosetta : `tensorflow-cpu` (utilisé par défaut) ne publie pas de wheel ARM64, `uv` sélectionne donc automatiquement le paquet `tensorflow` complet à la place sur Apple Silicon (jusqu'en v1.2.1 c'était `tensorflow-macos`, le fork Apple, qui s'arrête à TensorFlow 2.16) — c'est transparent, vous n'avez rien à faire de spécial. Sur Mac Intel, TensorFlow ne publie plus de wheel après la 2.16 : `uv` s'y limite tout seul.
 
 > Si macOS bloque le premier lancement avec un avertissement Gatekeeper sur un binaire tiers installé par une dépendance, autorisez-le dans **Réglages Système → Confidentialité et sécurité**.
 
@@ -157,7 +157,8 @@ Cela retire la commande et son environnement isolé. Vos fichiers de données ne
 |---|---|
 | `datavortex: command not found` après installation | Le dossier des outils uv n'est pas dans le PATH. Lancez `uv tool update-shell` puis rouvrez le terminal. |
 | `No executables are provided by package 'datavortex'` | Vous avez lancé `uv tool install datavortex` sans l'URL Git — cette commande a installé un paquet PyPI sans rapport qui porte le même nom par coïncidence. Désinstallez-le (`uv tool uninstall datavortex`) et réinstallez avec l'URL Git complète ci-dessus. |
-| `No solution found... has no wheels with a matching Python ABI tag (e.g., cp314)` | `uv` a choisi automatiquement une version de Python trop récente (TensorFlow n'a pas encore de wheels au-delà de Python 3.11). Depuis la v1.0.2+ (`requires-python`), `uv` doit éviter ce cas de lui-même ; si ça se reproduit, forcez explicitement une version compatible : `uv tool install ./datavortex-cli --python 3.11`. |
+| `No solution found... has no wheels with a matching Python ABI tag (e.g., cp314)` | `uv` a choisi automatiquement une version de Python trop récente (DataVortex supporte 3.10 à 3.12, cf. `requires-python`). `uv` doit éviter ce cas de lui-même ; si ça se reproduit, forcez explicitement une version compatible : `uv tool install ./datavortex-cli --python 3.11`. |
+| Miroir PyPI interne, proxy TLS d'entreprise, poste sans réseau | Voir [backend/COMPATIBILITY.md](backend/COMPATIBILITY.md) : `UV_INDEX_URL`, `--system-certs`, installation hors ligne depuis un dossier de wheels. |
 | Port 8000 déjà utilisé | `datavortex --port 9000` |
 | Le terminal semble figé au lancement | Normal la première fois : le message « Chargement des modules… » indique que pandas/scikit-learn/TensorFlow s'initialisent (quelques secondes). |
 

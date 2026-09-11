@@ -58,11 +58,13 @@ DataVortex est une plateforme interactive de visualisation et d'analyse de donn�
 
 | Composant | Minimum | Recommandé |
 |---|---|---|
-| Python | 3.10 ou 3.11 (TensorFlow ne publie pas encore de wheels 3.12+) | 3.11 |
+| Python | 3.10, 3.11 ou 3.12 | 3.11 |
 | RAM | 4 Go | 8 Go+ |
 | Navigateur | Chrome/Edge 90+ | Chrome, Firefox, Safari récents |
 
-`uv` gère lui-même la version de Python : il télécharge automatiquement un interpréteur 3.10/3.11 compatible si le vôtre n'en a pas (aucune installation manuelle de Python requise).
+`uv` gère lui-même la version de Python : il télécharge automatiquement un interpréteur 3.10–3.12 compatible si le vôtre n'en a pas (aucune installation manuelle de Python requise).
+
+Les dépendances sont déclarées par intervalles, pas figées : sur un miroir d'entreprise ou derrière un proxy, voir [backend/COMPATIBILITY.md](backend/COMPATIBILITY.md) (versions testées, miroir PyPI interne, certificats, installation hors ligne).
 
 > **DataVortex n'est pas publié sur PyPI** (le nom `datavortex` y est déjà pris par un paquet sans rapport) — l'installation se fait directement depuis ce dépôt Git, pas via `uv tool install datavortex` seul.
 

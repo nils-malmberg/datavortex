@@ -2,6 +2,31 @@
 
 Toutes les phases de développement notables de DataVortex sont documentées ici, de la plus récente à la plus ancienne. Format inspiré de [Keep a Changelog](https://keepachangelog.com/), adapté au déroulé par phases de ce projet.
 
+## [1.2.3] — 2026-09-11 — Dépendances par intervalles, Python 3.12
+
+> Le tag `v1.2.2` pointe sur la fusion de la Phase 10.2 : son contenu est celui de l'entrée 1.2.1 ci-dessous (les paquets s'y annoncent encore en 1.2.1). Il n'y a pas d'entrée 1.2.2 distincte.
+
+### Changé
+- **Toutes les dépendances Python sont déclarées par intervalles (`>=plancher,<plafond`) au lieu de versions figées (`==`).** Un `==` empêchait l'installation dès qu'un miroir d'entreprise n'avait pas ce wheel précis. Les planchers sont les plus anciennes versions qui s'installent en wheel et passent la suite complète (519 tests, toutes les dépendances à leur plancher en même temps) ; les plafonds sont la prochaine version majeure. Matrice détaillée et raisons de chaque borne : [backend/COMPATIBILITY.md](backend/COMPATIBILITY.md).
+- Python 3.12 supporté (`requires-python = ">=3.10,<3.13"`) : TensorFlow 2.16+ publie des wheels cp312. Python 3.9, proposé par le plan, n'est pas ajouté — il est en fin de vie et les modèles Pydantic utilisent la syntaxe `int | None`, inexistante à l'exécution en 3.9.
+- Le lockfile résout désormais les versions les plus récentes des intervalles : FastAPI 0.141, pandas 2.3, NumPy 2.x, scikit-learn 1.9, SciPy 1.17/1.18, TensorFlow 2.20 (Keras 3), Polars 1.44. La suite passe sur 3.10, 3.11 et 3.12.
+- TensorFlow sur macOS Apple Silicon vient maintenant du paquet `tensorflow` complet, `tensorflow-macos` (fork Apple) s'arrêtant à la 2.16 ; sur Mac Intel, plafond 2.17 (plus de wheel x86_64 ensuite).
+- Frontend : planchers des `^` ramenés à la première version de chaque ligne majeure qui lint et build ensemble (React 18.0, Vite 5.0, ESLint 8.0, axios 1.0, plotly.js 2.12 — le schéma de figures émis par plotly 5.10 côté backend) ; `react-router-dom`, jamais importé, est retiré. Le bundle commité est inchangé.
+- CLI : `datavortex-backend>=1.2.0,<2.0.0`, `uvicorn[standard]>=0.24.0,<1.0.0` (importé directement par `server.py`, il n'était pas déclaré).
+
+### Corrigé
+- Importance par permutation du réseau de neurones avec scikit-learn ≥ 1.6, qui interroge `__sklearn_tags__` sur tout estimateur : l'adaptateur Keras hérite de `BaseEstimator`.
+- Polars : le plan proposait de redescendre en 0.20–0.99 « en attendant de tester la 1.0 » ; c'est l'inverse, le code a toujours ciblé l'API 1.x (`truncate_ragged_lines`). L'intervalle est `>=1.0,<2.0`.
+
+### Ajouté
+- `backend/COMPATIBILITY.md` : versions testées à chaque extrémité, TensorFlow par plateforme, installation sur miroir PyPI interne, derrière un proxy TLS, ou hors ligne — et pourquoi **ne pas** utiliser `pip install --no-binary :all:` (TensorFlow ne se compile pas ainsi).
+- `backend/tests/test_dependencies.py` : aucun `==`, plancher et plafond sur chaque dépendance, même fenêtre Python pour le backend et le CLI.
+- CI : matrice Python 3.10 / 3.11 / 3.12 pour le backend, et job `backend-lowest` qui installe chaque dépendance directe à son plancher (`uv pip compile --resolution lowest-direct`) et relance la suite. `tool.uv.required-environments` empêche uv de verrouiller un wheel qui n'existe que pour une architecture exotique (kaleido 0.2.1.post1 n'existe qu'en armv7l).
+
+### Bornes délibérément serrées
+- `scipy<1.19` : la 1.19 retirera `critical_values` du résultat d'`anderson`, dont dépendent les tests de normalité (avertissement émis depuis la 1.17).
+- `kaleido<1` et `plotly<6` : kaleido 1.x exige un Chrome installé sur le poste ; Plotly 6 exige kaleido 1.
+
 ## [1.2.1] — 2026-09-11 — Build reproductible, versions alignées, séparateurs regex
 
 Première version taguée depuis la 1.0.4 : elle embarque les Phases 9, 10, 10.1 et 10.2.
