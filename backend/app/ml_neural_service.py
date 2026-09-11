@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from sklearn.base import BaseEstimator
 from sklearn.metrics import accuracy_score, confusion_matrix, mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
@@ -185,26 +186,31 @@ def run_neural_network(
         cm_fig.update_layout(title="Valeurs prédites vs réelles", xaxis_title="Réel", yaxis_title="Prédit")
         confusion = None
 
-    class _KerasPredictAdapter:
+    class _KerasPredictAdapter(BaseEstimator):
         """Adapte le modèle Keras à l'API scikit-learn (`.fit`/`.predict`)
         attendue par `permutation_importance`, pour réutiliser le même calcul
         que le reste du module ML plutôt que de dupliquer la logique de
         permutation. `.fit` est un no-op : le modèle est déjà entraîné, mais
-        le validateur de paramètres de sklearn exige que la méthode existe."""
+        le validateur de paramètres de sklearn exige que la méthode existe.
+        Hériter de `BaseEstimator` fournit `__sklearn_tags__`, que sklearn
+        1.6+ interroge sur tout estimateur (les attributs portent le nom des
+        paramètres du constructeur, comme `get_params` l'exige). On ne se
+        déclare pas classifieur : sklearn exigerait alors `classes_`, alors
+        que `predict` renvoie déjà des étiquettes prêtes pour `accuracy`."""
 
         def __init__(self, keras_model, is_classification, n_classes):
-            self._model = keras_model
-            self._is_classification = is_classification
-            self._n_classes = n_classes
+            self.keras_model = keras_model
+            self.is_classification = is_classification
+            self.n_classes = n_classes
 
         def fit(self, X, y=None):
             return self
 
         def predict(self, X):
-            pred = self._model.predict(X, verbose=0)
-            if not self._is_classification:
+            pred = self.keras_model.predict(X, verbose=0)
+            if not self.is_classification:
                 return pred.ravel()
-            if self._n_classes == 2:
+            if self.n_classes == 2:
                 return (pred.ravel() > 0.5).astype(int)
             return np.argmax(pred, axis=1)
 
