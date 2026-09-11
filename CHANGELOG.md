@@ -2,6 +2,23 @@
 
 Toutes les phases de développement notables de DataVortex sont documentées ici, de la plus récente à la plus ancienne. Format inspiré de [Keep a Changelog](https://keepachangelog.com/), adapté au déroulé par phases de ce projet.
 
+## [1.2.1] — 2026-09-11 — Build reproductible, versions alignées, séparateurs regex
+
+Première version taguée depuis la 1.0.4 : elle embarque les Phases 9, 10, 10.1 et 10.2.
+
+### Corrigé
+- **Les utilisateurs de `uv tool install` recevaient l'interface d'avant la Phase 9.** Le paquet CLI livre `datavortex-cli/datavortex/static/` tel qu'il est commité, sans jamais lancer Node — et ce dossier n'avait pas été régénéré depuis. `./build.sh` / `.\build.ps1` recompilent le frontend en une commande ; `datavortex-cli/tests/test_bundle.py`, exécuté en CI, échoue désormais si le bundle commité ne contient pas les fonctionnalités récentes du frontend.
+- Numéros de version divergents (backend 1.0.4, frontend 1.0.3, lockfile npm 0.1.0). `scripts/sync-versions.py` aligne les neuf emplacements ; sans argument il vérifie seulement, et la CI l'exécute.
+- `datavortex-cli/uv.lock` n'avait pas été régénéré depuis l'ajout de Polars, psutil et pyarrow au backend.
+
+### Ajouté
+- Séparateurs par expression régulière (`POST /api/parse`, `separator_type: "regex"`) : `\s+` pour des colonnes alignées à coups d'espaces, `[,;]` pour des délimiteurs mélangés, `\s*,\s*` pour des virgules entourées d'espaces. L'écran de séparateur propose un mode Regex avec validation en direct, exemples cliquables et aperçu découpé sur le motif ; le motif est revalidé côté serveur (syntaxe, et refus d'un motif acceptant la chaîne vide). Un motif passe par le moteur Python de pandas, le seul à savoir découper sur une regex — l'interface le signale.
+- `GET /api/version`.
+- Tâche CI « Release consistency » : versions alignées + tests du paquet CLI et de son bundle.
+
+### Notes
+- Le frontend est recompilé **après** l'ajout des séparateurs regex, pour que le bundle commité les contienne — pas avant, comme le proposait le plan initial.
+
 ## [Phase 10.1] — Atelier de visualisation unifié et performance sur 200 Mo
 
 Mesures détaillées, méthode et pistes écartées : [specs/PHASE_10_1_BENCHMARK_RESULTS.md](specs/PHASE_10_1_BENCHMARK_RESULTS.md).

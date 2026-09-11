@@ -93,3 +93,9 @@ Ouvrez une [issue GitHub](https://github.com/nils-malmberg/datavortex/issues) av
 ## Licence
 
 En contribuant, vous acceptez que vos contributions soient distribuées sous licence MIT (voir [LICENSE](LICENSE)).
+
+## Publier une version
+
+1. `python scripts/sync-versions.py 1.2.X` — aligne les neuf numéros de version du dépôt (backend, CLI, frontend et leurs lockfiles, README). Sans argument, le script vérifie seulement ; la CI l'exécute ainsi.
+2. `./build.sh` (ou `.\build.ps1`) — recompile le frontend dans `datavortex-cli/datavortex/static/`. `uv tool install` livre ce dossier tel quel, sans lancer Node : l'oublier livre l'interface précédente.
+3. Ajoutez l'entrée dans `CHANGELOG.md`, commitez le tout, puis `git tag -a v1.2.X`.

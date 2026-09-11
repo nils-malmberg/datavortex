@@ -27,6 +27,7 @@ Le `code` est stable (à tester par les clients), le `message` est un texte lisi
 | `REPORT_GENERATION_FAILED` | 500 | Échec de génération du PDF |
 | `TASK_NOT_FOUND` | 404 | Tâche de fond inconnue ou dont le résultat a expiré |
 | `INVALID_ENCODING` | 400 | Encoding d'export inconnu |
+| `INVALID_SEPARATOR_REGEX` | 400 | Motif de séparateur invalide, ou acceptant la chaîne vide |
 | `INTERNAL_ERROR` | 500 | Erreur non anticipée (bug) |
 
 Il n'y a pas de rate limiting (usage local mono-utilisateur).
@@ -39,7 +40,8 @@ Il n'y a pas de rate limiting (usage local mono-utilisateur).
 |---|---|
 | `GET /api/health` | État du serveur : empreinte mémoire (`memory.rss_mb`), durée de fonctionnement, tâches de fond en cours, statistiques du cache (`cache.hit_rate`), disponibilité de Polars. |
 | `POST /api/upload` | Upload d'un fichier (`multipart/form-data`, champ `file`). Détecte le format depuis l'extension — CSV, CSV.GZ/BZ2/ZIP, Parquet (toute compression interne), Feather, Excel, JSON (Phase 10) — l'encoding et, pour un CSV, propose un séparateur. Retourne un `session_id`, `format` (ex: `"csv_gz"`) et `file_info` (taille, compression, taille décompressée estimée). |
-| `POST /api/parse` | Parse définitivement la session avec le séparateur choisi (`{session_id, separator}`). Retourne `n_rows`, `n_columns`, `columns`, `column_types`, et `metrics` (durée, débit, moteur d'analyse retenu : `polars`, `pandas-c` ou `pandas-python`). Sans objet pour Parquet/Feather/Excel/JSON, déjà analysés à l'upload (`already_parsed: true`). |
+| `GET /api/version` | Numéro de version du serveur, seul (`{"version": "1.2.1"}`). |
+| `POST /api/parse` | Parse définitivement la session avec le séparateur choisi (`{session_id, separator, separator_type}`). `separator_type` vaut `"preset"` (défaut : séparateur littéral) ou `"regex"` (Phase 10.2 : motif tel que `\s+`, `[,;]`, `\s*,\s*` — validé avant analyse, `INVALID_SEPARATOR_REGEX` sinon ; toujours traité par le moteur Python de pandas, le seul à découper sur une expression régulière). Retourne `n_rows`, `n_columns`, `columns`, `column_types`, et `metrics` (durée, débit, moteur d'analyse retenu : `polars`, `pandas-c` ou `pandas-python`). Sans objet pour Parquet/Feather/Excel/JSON, déjà analysés à l'upload (`already_parsed: true`). |
 | `DELETE /api/session/{session_id}` | Libère une session (données + modèles ML entraînés associés). |
 | `POST /api/merge` | Combine plusieurs sessions (`session_ids`, `mode: "concat"|"merge"`, `key_column` pour un merge façon SQL join). |
 

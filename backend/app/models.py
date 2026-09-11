@@ -2,10 +2,17 @@ from typing import Annotated, Any, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
+SeparatorType = Literal["preset", "regex"]
+
 
 class ParseRequest(BaseModel):
     session_id: str
     separator: str
+    # "preset" : le séparateur est pris tel quel (un caractère, ou une courte
+    # chaîne littérale). "regex" : c'est un motif — `\s+`, `[,;]`, `\s*,\s*` —
+    # pour les fichiers alignés à coups d'espaces ou aux délimiteurs mélangés
+    # (Phase 10.2).
+    separator_type: SeparatorType = "preset"
 
 
 class UploadResponse(BaseModel):
@@ -28,6 +35,7 @@ class UploadResponse(BaseModel):
 class ParseResponse(BaseModel):
     session_id: str
     separator: Optional[str]
+    separator_type: SeparatorType = "preset"
     n_rows: int
     n_columns: int
     columns: list[str]

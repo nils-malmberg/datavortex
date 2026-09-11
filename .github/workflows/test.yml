@@ -59,3 +59,35 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  release-consistency:
+    name: Release consistency (versions + committed bundle)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      # Sans argument, le script ne modifie rien : il échoue si les neuf
+      # numéros de version du dépôt ne s'accordent pas (Phase 10.2).
+      - name: Check version numbers agree
+        run: uv run --no-project python scripts/sync-versions.py
+
+      # Le paquet CLI embarque datavortex/static/ tel qu'il est commité, sans
+      # jamais lancer Node : ces tests échouent si le bundle est absent,
+      # incohérent, ou ne contient pas les fonctionnalités récentes du
+      # frontend — autrement dit si ./build.sh n'a pas été relancé.
+      - name: Install CLI package
+        working-directory: datavortex-cli
+        run: uv sync --extra dev
+
+      - name: Test CLI package and committed bundle
+        working-directory: datavortex-cli
+        run: uv run pytest -v

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 from pathlib import Path
 from typing import Optional, Union
 
@@ -119,8 +120,15 @@ def load_csv(
     *,
     path: Optional[Union[str, Path]] = None,
     size_bytes: Optional[int] = None,
+    regex: bool = False,
 ) -> tuple[pd.DataFrame, str]:
     """Charge un CSV via le moteur le plus rapide qui aboutisse.
+
+    `regex=True` signifie que `separator` est un motif, pas un caractère :
+    seul le moteur Python de pandas sait découper sur une expression
+    régulière, Polars et le moteur C exigeant un séparateur d'un octet. La
+    cascade est donc court-circuitée — c'est le prix, connu et documenté, de
+    cette souplesse.
 
     `path` (fichier déversé sur disque) est préféré à `raw_bytes` quand il est
     disponible : Polars lit alors le fichier sans jamais matérialiser son
@@ -134,6 +142,11 @@ def load_csv(
             size_bytes = Path(path).stat().st_size
         else:
             size_bytes = len(raw_bytes or b"")
+
+    if regex:
+        if raw_bytes is None and path is not None:
+            raw_bytes = Path(path).read_bytes()
+        return parse_csv_pandas(raw_bytes or b"", encoding, regex_separator(separator)), "pandas-python"
 
     if should_use_fast_engine(size_bytes):
         source: Optional[Source] = path if path is not None else raw_bytes
@@ -158,6 +171,32 @@ def load_csv(
         raw_bytes = Path(path).read_bytes()
 
     return parse_csv_pandas(raw_bytes or b"", encoding, separator), "pandas-python"
+
+
+def validate_regex_separator(pattern: str) -> None:
+    r"""Rejette un motif invalide ou qui accepterait la chaîne vide.
+
+    Un motif comme `a*` ou `\s*` accepte le vide : pandas le refuserait plus
+    tard avec un message obscur, ou découperait entre chaque caractère. Mieux
+    vaut le dire tout de suite, avec la raison.
+    """
+    try:
+        compiled = re.compile(pattern)
+    except re.error as exc:
+        raise ValueError(f"Expression régulière invalide : {exc}")
+    if not pattern or compiled.fullmatch("") is not None:
+        raise ValueError("Le motif de séparateur ne doit pas pouvoir correspondre à une chaîne vide.")
+
+
+def regex_separator(pattern: str) -> str:
+    """Forme du motif à passer à pandas pour qu'il soit traité en regex.
+
+    Le moteur Python de pandas ne lit `sep` comme une expression régulière
+    qu'au-delà d'un caractère : un motif d'un seul caractère (`|`, `.`) serait
+    pris au pied de la lettre. L'envelopper dans un groupe non capturant
+    impose la sémantique regex quelle que soit sa longueur.
+    """
+    return pattern if len(pattern) > 1 else f"(?:{pattern})"
 
 
 def sniff_sample(raw_bytes: bytes) -> bytes:
