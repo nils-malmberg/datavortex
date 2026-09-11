@@ -1,18 +1,23 @@
 [project]
 name = "datavortex"
-version = "1.2.1"
+version = "1.2.3"
 description = "Interactive data visualization and analysis platform"
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.10,<3.12"  # tensorflow-cpu/tensorflow-macos==2.15.0 n'ont pas de wheels au-delà de cp311
+requires-python = ">=3.10,<3.13"  # même fenêtre que le backend
+# Phase 10.3 : bornes larges (cf. backend/pyproject.toml). Le backend est
+# résolu depuis ../backend (tool.uv.sources) pour un checkout du dépôt ; la
+# borne reste utile pour une installation depuis un index. uvicorn est
+# importé directement par server.py, donc déclaré ici aussi.
 dependencies = [
-    "datavortex-backend",
+    "datavortex-backend>=1.2.0,<2.0.0",
+    "uvicorn[standard]>=0.24.0,<1.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest==7.4.0",
-    "httpx==0.25.0",
+    "pytest>=7.4.0,<9.0.0",
+    "httpx>=0.25.0,<1.0.0",
 ]
 
 [project.scripts]
@@ -37,6 +42,16 @@ artifacts = ["datavortex/static/**"]
 
 [tool.uv.sources]
 datavortex-backend = { path = "../backend" }
+
+# Même liste que backend/pyproject.toml : elle n'est pas héritée, et sans elle
+# uv verrouille des wheels d'architectures exotiques (kaleido 0.2.1.post1).
+[tool.uv]
+required-environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
