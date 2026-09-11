@@ -125,7 +125,10 @@ from app.table_service import read_rows
 MAX_UPLOAD_SIZE_BYTES = 500 * 1024 * 1024  # 500MB
 PREVIEW_ROWS = 100
 
-app = FastAPI(title="DataVortex API", version="1.0.4")
+# Alignée sur les autres numéros de version du dépôt par scripts/sync-versions.py.
+__version__ = "1.2.1"
+
+app = FastAPI(title="DataVortex API", version=__version__)
 
 app.add_middleware(
     CORSMiddleware,
@@ -165,6 +168,11 @@ def health() -> dict:
         "cache": cache.stats(),
         "polars_available": POLARS_AVAILABLE,
     }
+
+
+@app.get("/api/version")
+def version() -> dict:
+    return {"version": __version__}
 
 
 @app.delete("/api/session/{session_id}")
