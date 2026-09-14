@@ -74,7 +74,8 @@ jobs:
         run: uv run python -c "import tensorflow as tf; assert tf.__version__.startswith('2.15.'), tf.__version__; print('TensorFlow', tf.__version__)"
 
       - name: Run tests
-        run: uv run pytest -q -p no:cacheprovider
+        timeout-minutes: 15
+        run: uv run pytest -v -p no:cacheprovider
 
   backend-lowest:
     # L'autre extrémité des intervalles : chaque dépendance directe à son
