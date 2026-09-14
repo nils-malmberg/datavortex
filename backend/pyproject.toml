@@ -49,12 +49,16 @@ dependencies = [
     #   « DLL load failed while importing _pywrap_tensorflow_internal »
     #   (régression constatée entre v1.2.2, TF 2.15 figé, et v1.2.3 ; la 2.15
     #   réinstallée sur le même poste fonctionne). Voir CORPORATE_SETUP.md.
+    #   Sur Windows, `tensorflow-cpu` n'est qu'une coquille de 2 Ko qui dépend
+    #   de `tensorflow-intel` ; uv lit les métadonnées du wheel Linux et ne
+    #   voit pas cette dépendance, si bien qu'un `uv sync` Windows n'installait
+    #   aucun TensorFlow. On déclare donc directement le vrai paquet.
     # - Linux : 2.15 à 2.20, les deux extrémités passent la suite en CI.
     # - macOS Apple Silicon : seul le paquet `tensorflow` complet a des wheels
     #   arm64 (tensorflow-macos, l'ancien fork Apple, s'arrête à 2.16).
     # - macOS Intel : plus aucun wheel après 2.16.
     # 2.15 n'a pas de wheel cp312 : c'est ce qui borne requires-python à <3.12.
-    "tensorflow-cpu>=2.15.0,<2.16.0; sys_platform == 'win32'",
+    "tensorflow-intel>=2.15.0,<2.16.0; sys_platform == 'win32'",
     "tensorflow-cpu>=2.15.0,<2.21.0; sys_platform == 'linux'",
     "tensorflow>=2.15.0,<2.21.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "tensorflow-cpu>=2.15.0,<2.17.0; sys_platform == 'darwin' and platform_machine != 'arm64'",

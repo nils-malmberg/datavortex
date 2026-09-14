@@ -48,7 +48,7 @@ résout aujourd'hui, exécuté sur Python 3.10 et 3.11 (Linux), et sur Windows e
 | jinja2 | `>=3.1.2,<4.0.0` | 3.1.2 | 3.1.6 | minimum exigé par `pandas.Styler` |
 | skl2onnx | `>=1.16.0,<2.0.0` | 1.16.0 | 1.20.0 | |
 | onnx | `>=1.14.0,<2.0.0` | 1.14.0 | 1.22.0 | |
-| tensorflow-cpu | Linux `>=2.15.0,<2.21.0` · **Windows `>=2.15.0,<2.16.0`** | 2.15.0 (Keras 2) | 2.20.0 (Keras 3) sur Linux ; 2.15.x sur Windows | voir la section TensorFlow |
+| tensorflow-cpu / tensorflow-intel (Windows) | Linux `>=2.15.0,<2.21.0` · **Windows `>=2.15.0,<2.16.0`** | 2.15.0 (Keras 2) | 2.20.0 (Keras 3) sur Linux ; 2.15.x sur Windows | voir la section TensorFlow |
 
 Dépendances de développement : `pytest>=7.4,<9`, `httpx>=0.25,<1`, `ruff>=0.6,<1`.
 
@@ -60,7 +60,7 @@ et la version qui se charge — dépendent de la plateforme. Les marqueurs de
 
 | Plateforme | Paquet | Intervalle | Raison |
 |---|---|---|---|
-| **Windows AMD64** | `tensorflow-cpu` | `>=2.15,<2.16` | **Seule la 2.15 se charge de façon fiable.** À partir de la 2.16, les wheels Windows sont compilés avec une chaîne MSVC plus récente et exigent un runtime Visual C++ 2022 à jour ; sur un poste d'entreprise sans droits admin, `import tensorflow` échoue (`DLL load failed while importing _pywrap_tensorflow_internal`). Constaté en v1.2.3 (qui installait la 2.20) sur un poste où la v1.2.2 (2.15 figée) fonctionnait ; la 2.15 réinstallée sur ce même poste fonctionne. |
+| **Windows AMD64** | `tensorflow-intel` (ce que `tensorflow-cpu` installe réellement sur Windows : le wheel `tensorflow-cpu` n'y est qu'une coquille de 2 Ko) | `>=2.15,<2.16` | **Seule la 2.15 se charge de façon fiable.** À partir de la 2.16, les wheels Windows sont compilés avec une chaîne MSVC plus récente et exigent un runtime Visual C++ 2022 à jour ; sur un poste d'entreprise sans droits admin, `import tensorflow` échoue (`DLL load failed while importing _pywrap_tensorflow_internal`). Constaté en v1.2.3 (qui installait la 2.20) sur un poste où la v1.2.2 (2.15 figée) fonctionnait ; la 2.15 réinstallée sur ce même poste fonctionne. |
 | Linux x86_64 | `tensorflow-cpu` | `>=2.15,<2.21` | wheels légers (sans CUDA) ; 2.15 et 2.20 testés en CI |
 | macOS Apple Silicon | `tensorflow` | `>=2.15,<2.21` | `tensorflow-cpu` n'a pas de wheel arm64 ; `tensorflow-macos` (fork Apple, utilisé jusqu'en v1.2.1) s'arrête à 2.16 |
 | macOS Intel | `tensorflow-cpu` | `>=2.15,<2.17` | plus aucun wheel macOS x86_64 après 2.16.2 |
