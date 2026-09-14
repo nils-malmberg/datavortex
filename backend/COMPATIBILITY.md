@@ -47,7 +47,7 @@ résout aujourd'hui, exécuté sur Python 3.10 et 3.11 (Linux), et sur Windows e
 | matplotlib | `>=3.7.0,<4.0.0` | 3.7.0 | 3.10.9 (3.10) · 3.11.1 (3.11) | |
 | jinja2 | `>=3.1.2,<4.0.0` | 3.1.2 | 3.1.6 | minimum exigé par `pandas.Styler` |
 | skl2onnx | `>=1.16.0,<2.0.0` | 1.16.0 | 1.20.0 | |
-| onnx | `>=1.14.0,<2.0.0` | 1.14.0 | 1.22.0 | |
+| onnx | Linux/Apple Silicon `>=1.14.0,<2.0.0` · **Windows, macOS Intel `>=1.14.0,<1.18.0`** | 1.14.0 | 1.22.0 (Windows : 1.17.0) | 1.18+ lit `ml_dtypes.float4_e2m1fn` (ml_dtypes ≥ 0.5) sans le déclarer ; TensorFlow 2.15/2.16 imposent ml_dtypes 0.3 → `import onnx` plantait (constaté en CI Windows) |
 | tensorflow-cpu / tensorflow-intel (Windows) | Linux `>=2.15.0,<2.21.0` · **Windows `>=2.15.0,<2.16.0`** | 2.15.0 (Keras 2) | 2.20.0 (Keras 3) sur Linux ; 2.15.x sur Windows | voir la section TensorFlow |
 
 Dépendances de développement : `pytest>=7.4,<9`, `httpx>=0.25,<1`, `ruff>=0.6,<1`.

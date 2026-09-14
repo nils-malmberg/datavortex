@@ -12,6 +12,9 @@ Toutes les phases de développement notables de DataVortex sont documentées ici
 - **Export PNG et rapport PDF qui ne rendaient jamais la main sur Windows** — trouvé par le nouveau job CI Windows (la suite y restait bloquée sur le premier `to_image`). kaleido 0.2.1, figé depuis la Phase 4, bloque indéfiniment sur Windows ; kaleido a publié la 0.1.0.post1 (wheels Windows uniquement) précisément pour ce cas. Windows la retient désormais, Linux/macOS gardent la 0.2.1. Si tu n'avais jamais réussi un export image ou un rapport PDF sur Windows, c'était ça.
 - Sur Windows, le wheel `tensorflow-cpu` est une coquille de 2 Ko dépendant de `tensorflow-intel` (la build Windows de TensorFlow, maintenue par Intel — elle tourne sur tout x86-64, AMD compris : le job CI la charge sur un AMD EPYC 7763) ; uv lisait les métadonnées du wheel Linux et ne voyait pas cette dépendance, si bien qu'un `uv sync` Windows n'installait aucun TensorFlow. `tensorflow-intel` est déclaré directement.
 
+- **Export ONNX cassé sur Windows** (`module 'ml_dtypes' has no attribute 'float4_e2m1fn'`) — trouvé par le même job. onnx 1.18+ exige ml_dtypes ≥ 0.5 sans le déclarer, et TensorFlow 2.15 impose ml_dtypes 0.3. Windows et macOS Intel (TF ≤ 2.16) restent sur onnx < 1.18.
+- Cache de résultats : horloge monotone au lieu de `time.time()` (qui n'avance que par pas de ~16 ms sur Windows — une entrée à TTL nul y paraissait encore fraîche — et peut reculer avec NTP).
+
 ### Ajouté
 - Job CI `backend-windows` (windows-latest, Python 3.11, **AMD EPYC**) : vérifie que la résolution Windows retient TensorFlow 2.15, qu'il se charge, et que la suite passe. **Windows n'était couvert par aucun test** : c'est ainsi que la 2.20 a cassé sans que rien ne le voie — et que le blocage kaleido est resté invisible.
 

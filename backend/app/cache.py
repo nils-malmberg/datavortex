@@ -61,7 +61,11 @@ class ResultCache:
                 self.misses += 1
                 return None
             value, stored_at = entry
-            if time.time() - stored_at > self._ttl:
+            # Horloge monotone : `time.time()` peut reculer (NTP) et n'avance
+            # que par pas de ~16 ms sur Windows, où une entrée à TTL nul
+            # semblait alors encore fraîche. `>=` : une entrée exactement à
+            # l'âge du TTL est périmée.
+            if time.monotonic() - stored_at >= self._ttl:
                 del self._entries[key]
                 self.misses += 1
                 return None
@@ -72,7 +76,7 @@ class ResultCache:
         with self._lock:
             if len(self._entries) >= self._max_entries:
                 self._evict_locked()
-            self._entries[key] = (value, time.time())
+            self._entries[key] = (value, time.monotonic())
 
     def get_or_compute(self, key: str, compute: Callable[[], Any]) -> Any:
         """Renvoie l'entrée en cache, ou calcule et mémorise le résultat.
