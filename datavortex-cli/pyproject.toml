@@ -1,10 +1,10 @@
 [project]
 name = "datavortex"
-version = "1.2.4"
+version = "1.2.5"
 description = "Interactive data visualization and analysis platform"
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.10,<3.13"  # même fenêtre que le backend
+requires-python = ">=3.10,<3.12"  # même fenêtre que le backend (TensorFlow 2.15 sur Windows)
 # Phase 10.3 : bornes larges (cf. backend/pyproject.toml). Le backend est
 # résolu depuis ../backend (tool.uv.sources) pour un checkout du dépôt ; la
 # borne reste utile pour une installation depuis un index. uvicorn est

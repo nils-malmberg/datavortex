@@ -1,13 +1,15 @@
 [project]
 name = "datavortex-backend"
-version = "1.2.4"
+version = "1.2.5"
 description = "DataVortex - Backend FastAPI pour visualisation et analyse de données"
 # Phase 10.3 : bornes larges plutôt que versions figées, pour que le paquet
 # s'installe depuis un miroir d'entreprise qui n'a pas exactement nos wheels.
 # Plancher = plus ancienne version avec laquelle la suite de tests passe
 # (`uv lock --resolution lowest-direct`), plafond = prochaine version majeure.
 # La matrice réellement testée est dans COMPATIBILITY.md.
-requires-python = ">=3.10,<3.13"
+# <3.12 : sur Windows seul TensorFlow 2.15 se charge de façon fiable (voir
+# les marqueurs ci-dessous), et il n'a pas de wheel cp312.
+requires-python = ">=3.10,<3.12"
 dependencies = [
     "fastapi>=0.100.0,<1.0.0",
     "uvicorn[standard]>=0.24.0,<1.0.0",
@@ -27,9 +29,13 @@ dependencies = [
     # de normalité : plafond explicite tant que ce format n'est pas revu.
     "scipy>=1.10.0,<1.19.0",
     # kaleido 1.x exige un Chrome installé pour exporter les images : on reste
-    # sur 0.2.x, autonome, et sur plotly 5 qui le pilote encore.
+    # sur 0.x, autonome, et sur plotly 5 qui le pilote encore. Sur Windows,
+    # la 0.2.1 bloque indéfiniment `to_image` (export PNG, rapport PDF) —
+    # constaté en CI (windows-latest) ; la 0.1.0.post1, publiée par kaleido
+    # précisément pour ce cas et uniquement en wheels Windows, fonctionne.
     "plotly>=5.10.0,<6.0.0",
-    "kaleido>=0.2.1,<1.0.0",
+    "kaleido>=0.2.1,<0.3.0; sys_platform != 'win32'",
+    "kaleido>=0.1.0.post1,<0.2.0; sys_platform == 'win32'",
     "python-multipart>=0.0.6,<0.1.0",
     "chardet>=4.0.0,<6.0.0",
     "openpyxl>=3.1.0,<4.0.0",
@@ -38,13 +44,31 @@ dependencies = [
     "matplotlib>=3.7.0,<4.0.0",
     "jinja2>=3.1.2,<4.0.0",
     "skl2onnx>=1.16.0,<2.0.0",
-    "onnx>=1.14.0,<2.0.0",
+    # onnx 1.18+ lit `ml_dtypes.float4_e2m1fn` (ml_dtypes >= 0.5) sans le
+    # déclarer ; TensorFlow 2.15/2.16 imposent ml_dtypes 0.3 → là où l'on
+    # reste sur ces versions (Windows, macOS Intel), `import onnx` plantait
+    # (constaté en CI sur Windows).
+    "onnx>=1.14.0,<1.18.0; sys_platform == 'win32' or (sys_platform == 'darwin' and platform_machine != 'arm64')",
+    "onnx>=1.14.0,<2.0.0; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
     # TensorFlow : le module est le même, mais les wheels diffèrent par
-    # plateforme. tensorflow-cpu (léger) couvre Linux et Windows ; sur macOS
-    # Apple Silicon seul le paquet `tensorflow` complet a des wheels arm64
-    # (tensorflow-macos, l'ancien fork Apple, s'arrête à 2.16) ; sur macOS
-    # Intel, plus aucun wheel après 2.16. 2.16+ apporte Keras 3 et Python 3.12.
-    "tensorflow-cpu>=2.15.0,<2.21.0; sys_platform != 'darwin'",
+    # plateforme, et la version qui se charge aussi.
+    # - Windows : 2.15 uniquement. Les wheels Windows à partir de la 2.16 sont
+    #   compilés avec une chaîne MSVC plus récente et exigent un runtime Visual
+    #   C++ 2022 à jour : sur un poste d'entreprise sans droits admin,
+    #   « DLL load failed while importing _pywrap_tensorflow_internal »
+    #   (régression constatée entre v1.2.2, TF 2.15 figé, et v1.2.3 ; la 2.15
+    #   réinstallée sur le même poste fonctionne). Voir COMPATIBILITY.md.
+    #   Sur Windows, `tensorflow-cpu` n'est qu'une coquille de 2 Ko qui dépend
+    #   de `tensorflow-intel` ; uv lit les métadonnées du wheel Linux et ne
+    #   voit pas cette dépendance, si bien qu'un `uv sync` Windows n'installait
+    #   aucun TensorFlow. On déclare donc directement le vrai paquet.
+    # - Linux : 2.15 à 2.20, les deux extrémités passent la suite en CI.
+    # - macOS Apple Silicon : seul le paquet `tensorflow` complet a des wheels
+    #   arm64 (tensorflow-macos, l'ancien fork Apple, s'arrête à 2.16).
+    # - macOS Intel : plus aucun wheel après 2.16.
+    # 2.15 n'a pas de wheel cp312 : c'est ce qui borne requires-python à <3.12.
+    "tensorflow-intel>=2.15.0,<2.16.0; sys_platform == 'win32'",
+    "tensorflow-cpu>=2.15.0,<2.21.0; sys_platform == 'linux'",
     "tensorflow>=2.15.0,<2.21.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "tensorflow-cpu>=2.15.0,<2.17.0; sys_platform == 'darwin' and platform_machine != 'arm64'",
 ]

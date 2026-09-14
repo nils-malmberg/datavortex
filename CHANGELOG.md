@@ -2,6 +2,26 @@
 
 Toutes les phases de développement notables de DataVortex sont documentées ici, de la plus récente à la plus ancienne. Format inspiré de [Keep a Changelog](https://keepachangelog.com/), adapté au déroulé par phases de ce projet.
 
+## [1.2.5] — 2026-09-14 — TensorFlow 2.15 sur Windows (régression de la 1.2.3)
+
+### Corrigé
+- **Réseau de neurones cassé sur un poste Windows d'entreprise depuis la 1.2.3 — cause trouvée.** Jusqu'à la v1.2.2, TensorFlow était figé à 2.15.0 et fonctionnait sur ce poste. La 1.2.3 a ouvert l'intervalle jusqu'à 2.20, et `uv tool install` résout au moment de l'installation : le poste a reçu la **2.20**, dont les wheels Windows (comme tous ceux à partir de la 2.16) exigent un runtime Visual C++ 2022 à jour — présent sur un poste personnel, pas sur un poste géré sans droits admin. La 2.15 réinstallée sur le même poste (`--with "tensorflow-cpu==2.15.0"`) fonctionne : régression confirmée. **Windows retient désormais TensorFlow `>=2.15,<2.16`** (marqueur `sys_platform == 'win32'`, déclaré sur `tensorflow-intel`, le vrai paquet Windows dont `tensorflow-cpu` n'est qu'une coquille — uv lisait les métadonnées du wheel Linux et ne voyait pas cette dépendance, si bien qu'un `uv sync` Windows n'installait aucun TensorFlow, à aucune version) ; Linux garde 2.15–2.20 (les deux extrémités testées), macOS inchangé. Réinstaller suffit : `uv tool install --force ./datavortex-cli`.
+- Conséquence : **`requires-python` revient à `<3.12`** (la 2.15 n'a pas de wheel cp312, et une fenêtre Python par plateforme n'existe pas). Le support 3.12 ajouté en 1.2.3 n'avait été demandé par personne ; il repartira quand une version ≥ 2.16 sera vérifiée sur un poste d'entreprise.
+- Le diagnostic de la 1.2.4 nomme maintenant la version installée (lue dans les métadonnées, sans importer) et, quand elle est ≥ 2.16 sur Windows, dit exactement ça et comment réinstaller — au lieu d'énumérer trois causes possibles.
+
+- **Export PNG et rapport PDF qui ne rendaient jamais la main sur Windows** — trouvé par le nouveau job CI Windows (la suite y restait bloquée sur le premier `to_image`). kaleido 0.2.1, figé depuis la Phase 4, bloque indéfiniment sur Windows ; kaleido a publié la 0.1.0.post1 (wheels Windows uniquement) précisément pour ce cas. Windows la retient désormais, Linux/macOS gardent la 0.2.1. Si tu n'avais jamais réussi un export image ou un rapport PDF sur Windows, c'était ça.
+- Sur Windows, le wheel `tensorflow-cpu` est une coquille de 2 Ko dépendant de `tensorflow-intel` (la build Windows de TensorFlow, maintenue par Intel — elle tourne sur tout x86-64, AMD compris : le job CI la charge sur un AMD EPYC 7763) ; uv lisait les métadonnées du wheel Linux et ne voyait pas cette dépendance, si bien qu'un `uv sync` Windows n'installait aucun TensorFlow. `tensorflow-intel` est déclaré directement.
+
+- **Export ONNX cassé sur Windows** (`module 'ml_dtypes' has no attribute 'float4_e2m1fn'`) — trouvé par le même job. onnx 1.18+ exige ml_dtypes ≥ 0.5 sans le déclarer, et TensorFlow 2.15 impose ml_dtypes 0.3. Windows et macOS Intel (TF ≤ 2.16) restent sur onnx < 1.18.
+- Cache de résultats : horloge monotone au lieu de `time.time()` (qui n'avance que par pas de ~16 ms sur Windows — une entrée à TTL nul y paraissait encore fraîche — et peut reculer avec NTP).
+
+### Ajouté
+- Job CI `backend-windows` (windows-latest, Python 3.11, **AMD EPYC**) : vérifie que la résolution Windows retient TensorFlow 2.15, qu'il se charge, et que la suite passe. **Windows n'était couvert par aucun test** : c'est ainsi que la 2.20 a cassé sans que rien ne le voie — et que le blocage kaleido est resté invisible.
+
+### Notes
+- `CORPORATE_SETUP.md` (ajouté en 1.2.4) est supprimé : la cause étant identifiée et corrigée, il n'apportait rien que `COMPATIBILITY.md` ne dise déjà (miroir, proxy, hors ligne, TensorFlow par plateforme).
+- Les intervalles de la 1.2.3 restent la bonne approche pour tout le reste ; ce qui manquait, c'est un test sur la plateforme où la borne haute change quelque chose.
+
 ## [1.2.4] — 2026-09-14 — Grille de sous-graphiques lisible, TensorFlow expliqué
 
 ### Corrigé
@@ -12,7 +32,7 @@ Toutes les phases de développement notables de DataVortex sont documentées ici
 ### Ajouté
 - `GET /api/ml/capabilities` : `tensorflow: {available, version, reason, hint, …}` et `features: {scikit_learn, neural_network, tflite_export}`. Sonde TensorFlow une fois pour toutes (import mémorisé). `GET /api/health` remonte le même état **sans sonder** — l'import peut prendre une minute.
 - `DATAVORTEX_NO_TENSORFLOW=1` (alias `DATAVORTEX_NO_ML=1`, nom du plan) et `datavortex --no-tensorflow` : TensorFlow n'est jamais importé, le réseau de neurones et l'export TFLite s'annoncent indisponibles, tout le reste fonctionne.
-- `backend/CORPORATE_SETUP.md` : symptômes → causes → pistes pour un poste d'entreprise (miroir PyPI, proxy TLS, hors ligne, DLL bloquée, installation sans TensorFlow avec `--no-deps`), et comment vérifier.
+- `backend/CORPORATE_SETUP.md` : guide poste d'entreprise — **supprimé en 1.2.5**, la cause réelle ayant été trouvée (voir ci-dessus).
 - Tests : taille intrinsèque de la grille et export/PDF qui la respectent (`test_subplots.py`), échec d'import TensorFlow simulé sur chaque surface (`test_ml_backend.py`, 13 tests), drapeau CLI.
 
 ### Notes
