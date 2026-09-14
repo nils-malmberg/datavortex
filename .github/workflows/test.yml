@@ -64,6 +64,12 @@ jobs:
       - name: Install dependencies
         run: uv sync --python 3.11 --extra dev
 
+      # Le processeur du runner apparaît dans le journal : `tensorflow-intel`
+      # est la build Windows de TensorFlow (maintenue par Intel), pas une
+      # build réservée aux processeurs Intel — elle doit se charger sur AMD.
+      - name: Show CPU
+        run: Get-CimInstance Win32_Processor | Select-Object -ExpandProperty Name
+
       - name: TensorFlow resolves to 2.15 and loads
         run: uv run python -c "import tensorflow as tf; assert tf.__version__.startswith('2.15.'), tf.__version__; print('TensorFlow', tf.__version__)"
 
