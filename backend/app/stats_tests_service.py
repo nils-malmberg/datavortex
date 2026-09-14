@@ -8,6 +8,7 @@ sur un grand échantillon, un écart négligeable devient « significatif ».
 from __future__ import annotations
 
 import math
+import warnings
 from typing import Any, Optional
 
 import numpy as np
@@ -730,7 +731,11 @@ def _goodness_of_fit(df: pd.DataFrame, req) -> dict[str, Any]:
                       "non comme une validation formelle.",
         }
     else:  # anderson
-        result = sps.anderson(values, dist=distribution_key if distribution_key in ("norm", "expon") else "norm")
+        with warnings.catch_warnings():
+            # SciPy 1.17 annonce le retrait de `critical_values` en 1.19 ; on
+            # lit encore cet attribut et pyproject.toml plafonne scipy <1.19.
+            warnings.simplefilter("ignore", FutureWarning)
+            result = sps.anderson(values, dist=distribution_key if distribution_key in ("norm", "expon") else "norm")
         statistic = float(result.statistic)
         levels = [float(v) for v in result.significance_level]
         criticals = [float(v) for v in result.critical_values]

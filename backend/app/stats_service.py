@@ -8,6 +8,7 @@ valeurs manquantes accompagnée de suggestions d'imputation.
 from __future__ import annotations
 
 import math
+import warnings
 from typing import Any, Optional
 
 import numpy as np
@@ -404,7 +405,11 @@ def _normality_tests(values: np.ndarray) -> dict[str, Any]:
         tests["dagostino"] = None
 
     try:
-        result = sps.anderson(values, dist="norm")
+        with warnings.catch_warnings():
+            # SciPy 1.17 annonce le retrait de `critical_values` en 1.19 ; on
+            # lit encore cet attribut et pyproject.toml plafonne scipy <1.19.
+            warnings.simplefilter("ignore", FutureWarning)
+            result = sps.anderson(values, dist="norm")
         # Le seuil 5% est en position 2 des niveaux [15, 10, 5, 2.5, 1].
         crit_5pct = float(result.critical_values[2])
         tests["anderson"] = {

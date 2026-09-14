@@ -48,8 +48,15 @@ def disabled_by() -> str | None:
 
 
 def _import_tensorflow() -> ModuleType:  # isolé pour être remplaçable dans les tests
+    # Sans ça, chaque entraînement déverse dans le terminal les messages
+    # d'information du runtime C++ (oneDNN, jeux d'instructions CPU) et les
+    # avertissements de dépréciation internes de Keras 2 — aucun n'est
+    # actionnable par l'utilisateur. `TF_CPP_MIN_LOG_LEVEL` doit être posé
+    # avant l'import ; on respecte une valeur déjà définie par l'utilisateur.
+    os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
     import tensorflow
 
+    tensorflow.get_logger().setLevel("ERROR")
     return tensorflow
 
 

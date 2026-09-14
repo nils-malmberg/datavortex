@@ -774,9 +774,9 @@ def ml_pca(body: PCARequest) -> dict:
 def ml_capabilities() -> dict:
     """Ce que ce serveur sait faire en ML, et pourquoi le reste manque (Phase 10.4).
 
-    Sonde TensorFlow (import mémorisé) : l'interface l'appelle en ouvrant le
-    constructeur de réseau de neurones, ce qui paie l'import avant le premier
-    entraînement et permet d'afficher un diagnostic plutôt qu'un bouton qui
+    Sonde TensorFlow (import mémorisé, jusqu'à une minute la première fois) :
+    à réserver aux outils et scripts — l'interface ne l'appelle plus, elle
+    paie l'import au premier entraînement et affiche le diagnostic du 503 s'il
     échoue. Les méthodes scikit-learn sont toujours disponibles.
     """
     tf_status = tensorflow_status(probe=True)

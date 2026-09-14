@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import io
+import warnings
 
 import chardet
 import pandas as pd
@@ -127,7 +128,14 @@ def detect_column_type(series: pd.Series) -> str:
 
     sample = non_null.head(30).astype(str)
     try:
-        parsed = pd.to_datetime(sample, errors="coerce")
+        # pandas avertit (« Could not infer format… ») dès qu'il ne devine pas
+        # de format commun et retombe sur dateutil : c'est précisément ce
+        # qu'on lui demande ici — tester si ça ressemble à des dates — et
+        # cette fonction tourne sur chaque colonne texte à presque chaque
+        # route. Le résultat est le même, sans inonder le terminal.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            parsed = pd.to_datetime(sample, errors="coerce")
         success_ratio = parsed.notna().mean()
     except Exception:
         success_ratio = 0.0
