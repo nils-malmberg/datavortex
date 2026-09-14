@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { runNeuralNetwork } from '../../api/client'
+import { useEffect, useState } from 'react'
+import { getMlCapabilities, runNeuralNetwork } from '../../api/client'
 import PlotPreview from '../PlotPreview'
 import {
   BUTTON_CLASS,
@@ -48,6 +48,27 @@ export default function NeuralNetworkBuilder({ sessionId, columns, columnTypes, 
   const [result, setResult] = useState(null)
   const [isTraining, setIsTraining] = useState(false)
   const [error, setError] = useState(null)
+  // null : sonde en cours ; sinon l'objet `tensorflow` de /api/ml/capabilities.
+  // Sur un poste d'entreprise où la DLL de TensorFlow est bloquée, on préfère
+  // l'expliquer ici plutôt que de laisser échouer le bouton « Entraîner ».
+  const [tensorflow, setTensorflow] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getMlCapabilities()
+      .then(({ data }) => {
+        if (!cancelled) setTensorflow(data.tensorflow)
+      })
+      .catch(() => {
+        if (!cancelled) setTensorflow({ available: true })  // serveur ancien : on laisse essayer
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const tensorflowReady = tensorflow?.available === true
+  const tensorflowProbing = tensorflow === null
 
   const toggleFeature = (col) => setFeatures((prev) => (prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]))
 
@@ -57,7 +78,7 @@ export default function NeuralNetworkBuilder({ sessionId, columns, columnTypes, 
   const addLayer = () => setLayers((prev) => (prev.length >= 8 ? prev : [...prev, { units: 16, activation: 'relu', dropout: 0 }]))
   const removeLayer = (index) => setLayers((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)))
 
-  const canTrain = features.length > 0 && !!target && layers.length > 0
+  const canTrain = features.length > 0 && !!target && layers.length > 0 && tensorflowReady
 
   const handleTrain = async () => {
     setIsTraining(true)
@@ -131,9 +152,23 @@ export default function NeuralNetworkBuilder({ sessionId, columns, columnTypes, 
         </div>
 
         <button onClick={handleTrain} disabled={!canTrain || isTraining} className={`${PRIMARY_BUTTON_CLASS} self-start px-6 py-2`}>
-          {isTraining ? 'Entraînement en cours…' : 'Entraîner le réseau'}
+          {isTraining ? 'Entraînement en cours…' : tensorflowProbing ? 'Vérification de TensorFlow…' : 'Entraîner le réseau'}
         </button>
       </Panel>
+
+      {tensorflow && tensorflow.available === false && (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          <p className="font-medium">Réseau de neurones indisponible sur ce serveur</p>
+          <p className="mt-1">{tensorflow.reason}</p>
+          {tensorflow.hint && <p className="mt-1 text-amber-800 dark:text-amber-300">{tensorflow.hint}</p>}
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+            Les autres méthodes (régression, classification, clustering, PCA) ne dépendent pas de TensorFlow et restent disponibles.
+          </p>
+        </div>
+      )}
 
       {error && <ErrorBox>{error}</ErrorBox>}
 

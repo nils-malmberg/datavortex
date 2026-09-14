@@ -51,6 +51,7 @@ from app.filtering import evaluate_filter
 from app.formulas import evaluate_formula
 from app.groupby_service import run_groupby
 from app.ml import run_classification, run_clustering, run_dimensionality_reduction, run_regression
+from app.ml_backend import tensorflow_status
 from app.ml_export_service import build_metadata, build_training_notebook, export_model_file
 from app.ml_neural_service import run_neural_network
 from app.ml_registry import get_model, register_model
@@ -107,8 +108,8 @@ from app.plotting import (
     build_3d_figure,
     build_multi_series_figure,
     build_subplot_figure,
-)
     intrinsic_size,
+)
 from app.plotting_service import build_advanced_figure
 from app.profile_service import detailed_profile
 from app.profiling import profile_operation
@@ -168,6 +169,9 @@ def health() -> dict:
         "tasks": task_registry.stats(),
         "cache": cache.stats(),
         "polars_available": POLARS_AVAILABLE,
+        # Sans sonde : l'import de TensorFlow coûte jusqu'à une minute, il n'a
+        # pas sa place dans un contrôle de santé. Voir /api/ml/capabilities.
+        "tensorflow": tensorflow_status(probe=False),
     }
 
 
@@ -660,13 +664,13 @@ def export_plot(body: ExportPlotRequest) -> Response:
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    try:
-        image_bytes = fig.to_image(format=body.format, width=body.width, height=body.height)
-    except Exception as exc:
-        raise AppError(
     # Une grille de sous-graphiques impose sa taille : l'exporter en 900x600
     # écraserait ses cases (Phase 10.4).
     width, height = intrinsic_size(fig, body.width, body.height)
+    try:
+        image_bytes = fig.to_image(format=body.format, width=width, height=height)
+    except Exception as exc:
+        raise AppError(
             500,
             "EXPORT_FAILED",
             f"Échec de l'export {body.format.upper()} (moteur kaleido) : {exc}",
@@ -764,6 +768,26 @@ def ml_pca(body: PCARequest) -> dict:
         session.active_df(), body.features, body.n_components, body.method, body.color_by,
     )
     return _finalize_ml_result(result)
+
+
+@app.get("/api/ml/capabilities")
+def ml_capabilities() -> dict:
+    """Ce que ce serveur sait faire en ML, et pourquoi le reste manque (Phase 10.4).
+
+    Sonde TensorFlow (import mémorisé) : l'interface l'appelle en ouvrant le
+    constructeur de réseau de neurones, ce qui paie l'import avant le premier
+    entraînement et permet d'afficher un diagnostic plutôt qu'un bouton qui
+    échoue. Les méthodes scikit-learn sont toujours disponibles.
+    """
+    tf_status = tensorflow_status(probe=True)
+    return {
+        "tensorflow": tf_status,
+        "features": {
+            "scikit_learn": True,
+            "neural_network": bool(tf_status["available"]),
+            "tflite_export": bool(tf_status["available"]),
+        },
+    }
 
 
 @app.post("/api/ml/neural_network")

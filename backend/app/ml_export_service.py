@@ -20,6 +20,7 @@ import joblib
 import numpy as np
 
 from app.errors import AppError
+from app.ml_backend import require_tensorflow
 from app.ml_registry import TrainedModel
 
 LINEAR_MODEL_TYPES = {"linear", "ridge", "lasso", "elastic_net", "logistic"}
@@ -121,7 +122,7 @@ def _export_onnx(model: TrainedModel) -> bytes:
 def _export_tflite(model: TrainedModel) -> bytes:
     if model.task != "neural_network":
         raise AppError(400, "FORMAT_NOT_SUPPORTED", "Le format TFLite n'est disponible que pour les réseaux de neurones.")
-    import tensorflow as tf
+    tf = require_tensorflow()
 
     converter = tf.lite.TFLiteConverter.from_keras_model(model.estimator)
     try:
