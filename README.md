@@ -64,7 +64,7 @@ DataVortex est une plateforme interactive de visualisation et d'analyse de donn�
 
 `uv` gère lui-même la version de Python : il télécharge automatiquement un interpréteur 3.10/3.11 compatible si le vôtre n'en a pas (aucune installation manuelle de Python requise).
 
-Les dépendances sont déclarées par intervalles, pas figées (versions testées : [backend/COMPATIBILITY.md](backend/COMPATIBILITY.md)). Sur un poste d'entreprise — miroir PyPI interne, proxy, politiques qui bloquent TensorFlow — suivez [backend/CORPORATE_SETUP.md](backend/CORPORATE_SETUP.md).
+Les dépendances sont déclarées par intervalles, pas figées (versions testées : [backend/COMPATIBILITY.md](backend/COMPATIBILITY.md)). Miroir PyPI interne, proxy TLS, installation hors ligne : même fichier, section « Installation sur un réseau d'entreprise ».
 
 > **DataVortex n'est pas publié sur PyPI** (le nom `datavortex` y est déjà pris par un paquet sans rapport) — l'installation se fait directement depuis ce dépôt Git, pas via `uv tool install datavortex` seul.
 

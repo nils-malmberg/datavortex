@@ -19,7 +19,7 @@ Toutes les phases de développement notables de DataVortex sont documentées ici
 - Job CI `backend-windows` (windows-latest, Python 3.11, **AMD EPYC**) : vérifie que la résolution Windows retient TensorFlow 2.15, qu'il se charge, et que la suite passe. **Windows n'était couvert par aucun test** : c'est ainsi que la 2.20 a cassé sans que rien ne le voie — et que le blocage kaleido est resté invisible.
 
 ### Notes
-- `CORPORATE_SETUP.md` est recentré sur cette cause ; les pistes « runtime absent / AppLocker / AVX » ne restent que pour le cas où la 2.15 elle-même ne se charge pas.
+- `CORPORATE_SETUP.md` (ajouté en 1.2.4) est supprimé : la cause étant identifiée et corrigée, il n'apportait rien que `COMPATIBILITY.md` ne dise déjà (miroir, proxy, hors ligne, TensorFlow par plateforme).
 - Les intervalles de la 1.2.3 restent la bonne approche pour tout le reste ; ce qui manquait, c'est un test sur la plateforme où la borne haute change quelque chose.
 
 ## [1.2.4] — 2026-09-14 — Grille de sous-graphiques lisible, TensorFlow expliqué
@@ -32,7 +32,7 @@ Toutes les phases de développement notables de DataVortex sont documentées ici
 ### Ajouté
 - `GET /api/ml/capabilities` : `tensorflow: {available, version, reason, hint, …}` et `features: {scikit_learn, neural_network, tflite_export}`. Sonde TensorFlow une fois pour toutes (import mémorisé). `GET /api/health` remonte le même état **sans sonder** — l'import peut prendre une minute.
 - `DATAVORTEX_NO_TENSORFLOW=1` (alias `DATAVORTEX_NO_ML=1`, nom du plan) et `datavortex --no-tensorflow` : TensorFlow n'est jamais importé, le réseau de neurones et l'export TFLite s'annoncent indisponibles, tout le reste fonctionne.
-- `backend/CORPORATE_SETUP.md` : symptômes → causes → pistes pour un poste d'entreprise (miroir PyPI, proxy TLS, hors ligne, DLL bloquée, installation sans TensorFlow avec `--no-deps`), et comment vérifier.
+- `backend/CORPORATE_SETUP.md` : guide poste d'entreprise — **supprimé en 1.2.5**, la cause réelle ayant été trouvée (voir ci-dessus).
 - Tests : taille intrinsèque de la grille et export/PDF qui la respectent (`test_subplots.py`), échec d'import TensorFlow simulé sur chaque surface (`test_ml_backend.py`, 13 tests), drapeau CLI.
 
 ### Notes

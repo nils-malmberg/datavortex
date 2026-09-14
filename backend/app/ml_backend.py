@@ -75,7 +75,7 @@ def diagnose(exc: BaseException) -> tuple[str, str]:
         return (
             "TensorFlow n'est pas installé dans cet environnement.",
             "Réinstallez DataVortex (`uv tool install --force ./datavortex-cli`) ; si le miroir de "
-            "paquets de votre entreprise ne fournit pas TensorFlow, voir backend/CORPORATE_SETUP.md.",
+            "paquets de votre entreprise ne fournit pas TensorFlow, définissez DATAVORTEX_NO_TENSORFLOW=1.",
         )
     if "dll load failed" in lowered or "pywrap_tensorflow" in lowered or "native tensorflow runtime" in lowered:
         if on_windows:
@@ -86,18 +86,18 @@ def diagnose(exc: BaseException) -> tuple[str, str]:
                     f"À partir de la 2.16, les wheels Windows de TensorFlow exigent un runtime Visual C++ 2022 "
                     f"récent ; la {WINDOWS_KNOWN_GOOD} se charge sans lui. DataVortex 1.2.5+ installe la "
                     f"{WINDOWS_KNOWN_GOOD} sur Windows : réinstallez (`uv tool install --force ./datavortex-cli`) "
-                    "ou forcez-la (`--with \"tensorflow-cpu<2.16\"`). Détail : backend/CORPORATE_SETUP.md.",
+                    "ou forcez-la (`--with \"tensorflow-cpu<2.16\"`).",
                 )
             return (
                 f"TensorFlow {installed or ''} est installé mais Windows refuse de charger sa bibliothèque native ({text}).".replace("  ", " "),
                 "Cette version est celle qui se charge d'ordinaire : vérifiez le runtime Microsoft Visual C++ "
                 "2015-2022 (msvcp140.dll), une politique AppLocker/antivirus sur le dossier utilisateur, ou un "
-                "processeur (VM) sans AVX. Détail et contournements : backend/CORPORATE_SETUP.md.",
+                "processeur (VM) sans AVX. Sans solution, DATAVORTEX_NO_TENSORFLOW=1 désactive cette seule fonctionnalité.",
             )
         return (
             f"TensorFlow est installé mais sa bibliothèque native ne se charge pas ({text}).",
             "Vérifiez que le processeur supporte AVX et que la glibc est récente ; "
-            "détail dans backend/CORPORATE_SETUP.md.",
+            "sans solution, DATAVORTEX_NO_TENSORFLOW=1 désactive cette seule fonctionnalité.",
         )
     if "illegal instruction" in lowered or "avx" in lowered:
         return (
@@ -108,7 +108,7 @@ def diagnose(exc: BaseException) -> tuple[str, str]:
     return (
         f"TensorFlow ne s'importe pas : {text}",
         "Le reste de l'application fonctionne ; pour ne plus tenter l'import, définissez "
-        "DATAVORTEX_NO_TENSORFLOW=1. Détail dans backend/CORPORATE_SETUP.md.",
+        "DATAVORTEX_NO_TENSORFLOW=1.",
     )
 
 

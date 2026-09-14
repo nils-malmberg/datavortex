@@ -57,7 +57,7 @@ dependencies = [
     #   C++ 2022 à jour : sur un poste d'entreprise sans droits admin,
     #   « DLL load failed while importing _pywrap_tensorflow_internal »
     #   (régression constatée entre v1.2.2, TF 2.15 figé, et v1.2.3 ; la 2.15
-    #   réinstallée sur le même poste fonctionne). Voir CORPORATE_SETUP.md.
+    #   réinstallée sur le même poste fonctionne). Voir COMPATIBILITY.md.
     #   Sur Windows, `tensorflow-cpu` n'est qu'une coquille de 2 Ko qui dépend
     #   de `tensorflow-intel` ; uv lit les métadonnées du wheel Linux et ne
     #   voit pas cette dépendance, si bien qu'un `uv sync` Windows n'installait
