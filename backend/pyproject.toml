@@ -1,13 +1,15 @@
 [project]
 name = "datavortex-backend"
-version = "1.2.4"
+version = "1.2.5"
 description = "DataVortex - Backend FastAPI pour visualisation et analyse de données"
 # Phase 10.3 : bornes larges plutôt que versions figées, pour que le paquet
 # s'installe depuis un miroir d'entreprise qui n'a pas exactement nos wheels.
 # Plancher = plus ancienne version avec laquelle la suite de tests passe
 # (`uv lock --resolution lowest-direct`), plafond = prochaine version majeure.
 # La matrice réellement testée est dans COMPATIBILITY.md.
-requires-python = ">=3.10,<3.13"
+# <3.12 : sur Windows seul TensorFlow 2.15 se charge de façon fiable (voir
+# les marqueurs ci-dessous), et il n'a pas de wheel cp312.
+requires-python = ">=3.10,<3.12"
 dependencies = [
     "fastapi>=0.100.0,<1.0.0",
     "uvicorn[standard]>=0.24.0,<1.0.0",
@@ -40,11 +42,20 @@ dependencies = [
     "skl2onnx>=1.16.0,<2.0.0",
     "onnx>=1.14.0,<2.0.0",
     # TensorFlow : le module est le même, mais les wheels diffèrent par
-    # plateforme. tensorflow-cpu (léger) couvre Linux et Windows ; sur macOS
-    # Apple Silicon seul le paquet `tensorflow` complet a des wheels arm64
-    # (tensorflow-macos, l'ancien fork Apple, s'arrête à 2.16) ; sur macOS
-    # Intel, plus aucun wheel après 2.16. 2.16+ apporte Keras 3 et Python 3.12.
-    "tensorflow-cpu>=2.15.0,<2.21.0; sys_platform != 'darwin'",
+    # plateforme, et la version qui se charge aussi.
+    # - Windows : 2.15 uniquement. Les wheels Windows à partir de la 2.16 sont
+    #   compilés avec une chaîne MSVC plus récente et exigent un runtime Visual
+    #   C++ 2022 à jour : sur un poste d'entreprise sans droits admin,
+    #   « DLL load failed while importing _pywrap_tensorflow_internal »
+    #   (régression constatée entre v1.2.2, TF 2.15 figé, et v1.2.3 ; la 2.15
+    #   réinstallée sur le même poste fonctionne). Voir CORPORATE_SETUP.md.
+    # - Linux : 2.15 à 2.20, les deux extrémités passent la suite en CI.
+    # - macOS Apple Silicon : seul le paquet `tensorflow` complet a des wheels
+    #   arm64 (tensorflow-macos, l'ancien fork Apple, s'arrête à 2.16).
+    # - macOS Intel : plus aucun wheel après 2.16.
+    # 2.15 n'a pas de wheel cp312 : c'est ce qui borne requires-python à <3.12.
+    "tensorflow-cpu>=2.15.0,<2.16.0; sys_platform == 'win32'",
+    "tensorflow-cpu>=2.15.0,<2.21.0; sys_platform == 'linux'",
     "tensorflow>=2.15.0,<2.21.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "tensorflow-cpu>=2.15.0,<2.17.0; sys_platform == 'darwin' and platform_machine != 'arm64'",
 ]

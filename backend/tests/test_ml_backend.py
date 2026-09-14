@@ -64,12 +64,28 @@ def _train_network(session_id: str):
 # --- Diagnostic --------------------------------------------------------------
 
 
-def test_windows_dll_failure_is_explained(monkeypatch):
+def test_windows_dll_failure_with_recent_tensorflow_names_the_version(monkeypatch):
+    """Le cas réel (v1.2.3 sur un poste d'entreprise) : TF 2.20 installé, DLL refusée."""
     monkeypatch.setattr(ml_backend.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(ml_backend, "installed_version", lambda: "2.20.0")
     reason, hint = ml_backend.diagnose(WINDOWS_DLL_ERROR)
-    assert "bibliothèque native" in reason
-    assert "Visual C++" in hint and "AppLocker" in hint and "AVX" in hint
+    assert "TensorFlow 2.20.0" in reason and "bibliothèque native" in reason
+    assert "2.16" in hint and "2.15" in hint and "Visual C++ 2022" in hint
+    assert "uv tool install --force" in hint
     assert "CORPORATE_SETUP.md" in hint
+
+
+def test_windows_dll_failure_with_known_good_tensorflow_lists_other_causes(monkeypatch):
+    monkeypatch.setattr(ml_backend.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(ml_backend, "installed_version", lambda: "2.15.1")
+    reason, hint = ml_backend.diagnose(WINDOWS_DLL_ERROR)
+    assert "TensorFlow 2.15.1" in reason
+    assert "AppLocker" in hint and "AVX" in hint and "Visual C++" in hint
+
+
+def test_installed_version_reads_metadata_without_importing():
+    pytest.importorskip("tensorflow")
+    assert ml_backend.installed_version()
 
 
 def test_missing_package_is_explained():

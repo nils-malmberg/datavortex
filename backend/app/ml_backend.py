@@ -25,6 +25,12 @@ from types import ModuleType
 
 from app.errors import AppError
 
+# Sur Windows, seule la 2.15 se charge de façon fiable : les wheels à partir de
+# la 2.16 exigent un runtime Visual C++ 2022 récent, absent des postes
+# d'entreprise sans droits admin (régression v1.2.3, corrigée en 1.2.5 par
+# le marqueur Windows de pyproject.toml).
+WINDOWS_KNOWN_GOOD = "2.15"
+
 DISABLE_ENV_VARS = ("DATAVORTEX_NO_TENSORFLOW", "DATAVORTEX_NO_ML")
 _TRUTHY = ("1", "true", "yes", "on")
 
@@ -47,6 +53,18 @@ def _import_tensorflow() -> ModuleType:  # isolé pour être remplaçable dans l
     return tensorflow
 
 
+def installed_version() -> str | None:
+    """Version du paquet TensorFlow présent, sans l'importer (métadonnées du wheel)."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    for name in ("tensorflow-cpu", "tensorflow", "tensorflow-macos", "tensorflow-intel"):
+        try:
+            return version(name)
+        except PackageNotFoundError:
+            continue
+    return None
+
+
 def diagnose(exc: BaseException) -> tuple[str, str]:
     """(cause, piste) en français pour un `import tensorflow` qui a échoué."""
     text = f"{type(exc).__name__}: {exc}"
@@ -61,12 +79,20 @@ def diagnose(exc: BaseException) -> tuple[str, str]:
         )
     if "dll load failed" in lowered or "pywrap_tensorflow" in lowered or "native tensorflow runtime" in lowered:
         if on_windows:
+            installed = installed_version()
+            if installed and not installed.startswith(WINDOWS_KNOWN_GOOD + "."):
+                return (
+                    f"TensorFlow {installed} est installé mais Windows refuse de charger sa bibliothèque native ({text}).",
+                    f"À partir de la 2.16, les wheels Windows de TensorFlow exigent un runtime Visual C++ 2022 "
+                    f"récent ; la {WINDOWS_KNOWN_GOOD} se charge sans lui. DataVortex 1.2.5+ installe la "
+                    f"{WINDOWS_KNOWN_GOOD} sur Windows : réinstallez (`uv tool install --force ./datavortex-cli`) "
+                    "ou forcez-la (`--with \"tensorflow-cpu<2.16\"`). Détail : backend/CORPORATE_SETUP.md.",
+                )
             return (
-                f"TensorFlow est installé mais Windows refuse de charger sa bibliothèque native ({text}).",
-                "Causes habituelles sur un poste d'entreprise : le runtime Microsoft Visual C++ 2015-2022 "
-                "(msvcp140.dll) n'est pas installé, une politique AppLocker/antivirus bloque les DLL du "
-                "dossier utilisateur, ou le processeur (souvent une VM) n'expose pas les instructions AVX. "
-                "Détail et contournements : backend/CORPORATE_SETUP.md.",
+                f"TensorFlow {installed or ''} est installé mais Windows refuse de charger sa bibliothèque native ({text}).".replace("  ", " "),
+                "Cette version est celle qui se charge d'ordinaire : vérifiez le runtime Microsoft Visual C++ "
+                "2015-2022 (msvcp140.dll), une politique AppLocker/antivirus sur le dossier utilisateur, ou un "
+                "processeur (VM) sans AVX. Détail et contournements : backend/CORPORATE_SETUP.md.",
             )
         return (
             f"TensorFlow est installé mais sa bibliothèque native ne se charge pas ({text}).",

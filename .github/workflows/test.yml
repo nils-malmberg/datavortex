@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.11", "3.12"]
+        python: ["3.10", "3.11"]
     defaults:
       run:
         working-directory: backend
@@ -39,6 +39,36 @@ jobs:
 
       - name: Run tests
         run: uv run pytest -v
+
+  backend-windows:
+    # Windows n'a jamais été couvert : c'est là que TensorFlow >= 2.16 a cassé
+    # (v1.2.3, poste d'entreprise). Ce job vérifie que la résolution Windows
+    # retient bien la 2.15, qu'elle se charge, et que la suite passe.
+    name: Backend (Windows, TensorFlow 2.15)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --python 3.11 --extra dev
+
+      - name: TensorFlow resolves to 2.15 and loads
+        run: uv run python -c "import tensorflow as tf; assert tf.__version__.startswith('2.15.'), tf.__version__; print('TensorFlow', tf.__version__)"
+
+      - name: Run tests
+        run: uv run pytest -q -p no:cacheprovider
 
   backend-lowest:
     # L'autre extrémité des intervalles : chaque dépendance directe à son
