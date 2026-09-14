@@ -108,6 +108,7 @@ from app.plotting import (
     build_multi_series_figure,
     build_subplot_figure,
 )
+    intrinsic_size,
 from app.plotting_service import build_advanced_figure
 from app.profile_service import detailed_profile
 from app.profiling import profile_operation
@@ -663,6 +664,9 @@ def export_plot(body: ExportPlotRequest) -> Response:
         image_bytes = fig.to_image(format=body.format, width=body.width, height=body.height)
     except Exception as exc:
         raise AppError(
+    # Une grille de sous-graphiques impose sa taille : l'exporter en 900x600
+    # écraserait ses cases (Phase 10.4).
+    width, height = intrinsic_size(fig, body.width, body.height)
             500,
             "EXPORT_FAILED",
             f"Échec de l'export {body.format.upper()} (moteur kaleido) : {exc}",

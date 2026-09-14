@@ -17,6 +17,9 @@ export default function ThemedPlot({
   data,
   layout = {},
   height = 420,
+  // Largeur en dessous de laquelle la figure ne se comprime pas (grille de
+  // sous-graphiques) : le conteneur parent défile horizontalement à la place.
+  minWidth,
   exportName = 'graphique',
   onGraphDiv,
   config = {},
@@ -56,7 +59,7 @@ export default function ThemedPlot({
         onInitialized={handleInit}
         onUpdate={handleInit}
         useResizeHandler
-        style={{ width: '100%', height: `${height}px` }}
+        style={{ width: '100%', height: `${height}px`, minWidth: minWidth ? `${minWidth}px` : undefined }}
         config={{
           responsive: true,
           displaylogo: false,

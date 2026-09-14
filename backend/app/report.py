@@ -46,6 +46,7 @@ from app.plotting import (
     build_3d_figure,
     build_multi_series_figure,
     build_subplot_figure,
+    intrinsic_size,
 )
 from app.plotting_service import build_advanced_figure
 from app.profile_service import detailed_profile
@@ -479,7 +480,7 @@ def _build_plot_figure(df, spec):
     return builder(df, params)
 
 
-def _plots_flowables(df, plot_specs, styles, content_width, resize_to_fit: bool):
+def _plots_flowables(df, plot_specs, styles, content_width, resize_to_fit: bool, content_height: float):
     story = [Paragraph("Graphiques", styles["SectionHeading"])]
     if not plot_specs:
         story.append(Paragraph("Aucun graphique sélectionné pour ce rapport.", styles["Body"]))
@@ -487,11 +488,21 @@ def _plots_flowables(df, plot_specs, styles, content_width, resize_to_fit: bool)
         return story
 
     scale_factor = 0.85 if resize_to_fit else 1.0
-    image_width = content_width * scale_factor
+    # Une image plus haute que la zone de contenu (grille 4x2 en portrait…)
+    # ferait échouer la mise en page ; on garde la place de la légende.
+    max_image_height = content_height - 2.5 * cm
     for i, spec in enumerate(plot_specs, start=1):
         fig = _build_plot_figure(df, spec)
-        png_bytes = fig.to_image(format="png", width=1000, height=650, scale=1)
-        image = RLImage(io.BytesIO(png_bytes), width=image_width, height=image_width * 0.65)
+        # Une grille de sous-graphiques impose sa taille (Phase 10.4) : on la
+        # rend à ses proportions, puis on la réduit pour tenir dans la page.
+        render_width, render_height = intrinsic_size(fig, 1000, 650)
+        png_bytes = fig.to_image(format="png", width=render_width, height=render_height, scale=1)
+        image_width = content_width * scale_factor
+        image_height = image_width * render_height / render_width
+        if image_height > max_image_height:
+            image_width *= max_image_height / image_height
+            image_height = max_image_height
+        image = RLImage(io.BytesIO(png_bytes), width=image_width, height=image_height)
         image.hAlign = "LEFT"
         caption = spec.title or spec.params.get("plot_type", spec.kind)
         story.append(image)
@@ -549,7 +560,7 @@ def build_report(
 
     if plot_specs:
         story.append(PageBreak())
-        story.extend(_plots_flowables(df, plot_specs, styles, content_width, resize_plots_to_fit))
+        story.extend(_plots_flowables(df, plot_specs, styles, content_width, resize_plots_to_fit, doc.height))
 
     doc.build(story)
     return buffer.getvalue()

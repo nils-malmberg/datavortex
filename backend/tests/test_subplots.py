@@ -177,3 +177,75 @@ def test_subplots_can_go_into_a_pdf_report():
     )
     assert resp.status_code == 200
     assert resp.content[:4] == b"%PDF"
+
+
+# --- Phase 10.4 : une grille a une taille intrinsèque -----------------------
+#
+# Avant : `height = max(400, 280 * rows)` côté serveur, mais l'aperçu rendait
+# la figure dans 520 px et l'export dans 900x600 quelle que soit la grille :
+# une 3x2 écrasait ses cases et superposait titres et axes.
+
+
+def _cells(rows, cols):
+    return [{"plot_type": "histogram", "y": "revenue"} for _ in range(rows * cols)]
+
+
+@pytest.mark.parametrize("rows,cols", [(1, 1), (1, 2), (2, 2), (3, 2), (4, 4)])
+def test_grid_declares_its_own_height_and_min_width(rows, cols):
+    from app.plotting import SUBPLOT_COL_PX, SUBPLOT_MIN_HEIGHT, SUBPLOT_ROW_PX
+
+    body = _subplots(_session(), rows=rows, cols=cols, subplots=_cells(rows, cols)).json()
+    layout = body["figure"]["layout"]
+    assert layout["height"] == max(SUBPLOT_MIN_HEIGHT, SUBPLOT_ROW_PX * rows)
+    assert layout["meta"]["grid"] == {"rows": rows, "cols": cols, "min_width": SUBPLOT_COL_PX * cols}
+    assert "width" not in layout  # la largeur reste adaptative (autosize), seule la hauteur est imposée
+
+
+def test_each_grid_row_keeps_at_least_500px():
+    body = _subplots(_session(), rows=3, cols=2, subplots=_cells(3, 2)).json()
+    assert body["figure"]["layout"]["height"] / 3 >= 500
+
+
+def _png_size(content: bytes) -> tuple[int, int]:
+    assert content[:8] == b"\x89PNG\r\n\x1a\n"
+    return int.from_bytes(content[16:20], "big"), int.from_bytes(content[20:24], "big")
+
+
+def test_export_never_squashes_a_grid_below_its_intrinsic_size():
+    """Un export demandé en 900x600 d'une grille 3x2 sort à la taille de la grille."""
+    resp = client.post("/api/export/plot", json={
+        "session_id": _session(), "kind": "subplots", "format": "png", "width": 900, "height": 600,
+        "params": {"rows": 3, "cols": 2, "subplots": _cells(3, 2)},
+    })
+    assert resp.status_code == 200
+    width, height = _png_size(resp.content)
+    assert height == 1500
+    assert width == 900  # 2 colonnes x 420 = 840 < 900 : la largeur demandée suffit
+
+
+def test_export_honours_a_larger_requested_size():
+    resp = client.post("/api/export/plot", json={
+        "session_id": _session(), "kind": "subplots", "format": "png", "width": 1800, "height": 2000,
+        "params": {"rows": 1, "cols": 2, "subplots": _cells(1, 2)},
+    })
+    assert _png_size(resp.content) == (1800, 2000)
+
+
+def test_single_plot_export_is_unchanged_by_intrinsic_size():
+    resp = client.post("/api/export/plot", json={
+        "session_id": _session(), "kind": "2d", "format": "png", "width": 640, "height": 400,
+        "params": {"plot_type": "scatter", "x": "revenue", "y": "units"},
+    })
+    assert resp.status_code == 200
+    assert _png_size(resp.content) == (640, 400)
+
+
+def test_tall_grid_fits_a_portrait_pdf_page():
+    """4 lignes = 2000 px : sans réduction, reportlab refuserait le flowable."""
+    resp = client.post("/api/report/pdf", json={
+        "session_id": _session(), "sections": ["plots"], "page_format": "A4", "orientation": "portrait",
+        "plots": [{"kind": "subplots", "title": "Grille haute",
+                   "params": {"rows": 4, "cols": 2, "subplots": _cells(4, 2)}}],
+    })
+    assert resp.status_code == 200, resp.text
+    assert resp.content[:4] == b"%PDF"
