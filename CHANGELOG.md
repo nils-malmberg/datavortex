@@ -2,6 +2,20 @@
 
 Toutes les phases de développement notables de DataVortex sont documentées ici, de la plus récente à la plus ancienne. Format inspiré de [Keep a Changelog](https://keepachangelog.com/), adapté au déroulé par phases de ce projet.
 
+## [1.2.5] — 2026-09-14 — TensorFlow 2.15 sur Windows (régression de la 1.2.3)
+
+### Corrigé
+- **Réseau de neurones cassé sur un poste Windows d'entreprise depuis la 1.2.3 — cause trouvée.** Jusqu'à la v1.2.2, TensorFlow était figé à 2.15.0 et fonctionnait sur ce poste. La 1.2.3 a ouvert l'intervalle jusqu'à 2.20, et `uv tool install` résout au moment de l'installation : le poste a reçu la **2.20**, dont les wheels Windows (comme tous ceux à partir de la 2.16) exigent un runtime Visual C++ 2022 à jour — présent sur un poste personnel, pas sur un poste géré sans droits admin. La 2.15 réinstallée sur le même poste (`--with "tensorflow-cpu==2.15.0"`) fonctionne : régression confirmée. **Windows retient désormais `tensorflow-cpu>=2.15,<2.16`** (marqueur `sys_platform == 'win32'`) ; Linux garde 2.15–2.20 (les deux extrémités testées), macOS inchangé. Réinstaller suffit : `uv tool install --force ./datavortex-cli`.
+- Conséquence : **`requires-python` revient à `<3.12`** (la 2.15 n'a pas de wheel cp312, et une fenêtre Python par plateforme n'existe pas). Le support 3.12 ajouté en 1.2.3 n'avait été demandé par personne ; il repartira quand une version ≥ 2.16 sera vérifiée sur un poste d'entreprise.
+- Le diagnostic de la 1.2.4 nomme maintenant la version installée (lue dans les métadonnées, sans importer) et, quand elle est ≥ 2.16 sur Windows, dit exactement ça et comment réinstaller — au lieu d'énumérer trois causes possibles.
+
+### Ajouté
+- Job CI `backend-windows` (windows-latest, Python 3.11) : vérifie que la résolution Windows retient la 2.15, qu'elle se charge, et que la suite passe. **Windows n'était couvert par aucun test** : c'est ainsi que la 2.20 a cassé sans que rien ne le voie.
+
+### Notes
+- `CORPORATE_SETUP.md` est recentré sur cette cause ; les pistes « runtime absent / AppLocker / AVX » ne restent que pour le cas où la 2.15 elle-même ne se charge pas.
+- Les intervalles de la 1.2.3 restent la bonne approche pour tout le reste ; ce qui manquait, c'est un test sur la plateforme où la borne haute change quelque chose.
+
 ## [1.2.4] — 2026-09-14 — Grille de sous-graphiques lisible, TensorFlow expliqué
 
 ### Corrigé

@@ -10,7 +10,7 @@ acceptées, voir [COMPATIBILITY.md](COMPATIBILITY.md).
 | Ce que vous voyez | Cause probable | Section |
 |---|---|---|
 | `uv tool install` échoue, « No solution found », timeouts, erreur TLS | pas d'accès direct à PyPI, ou proxy qui réécrit les certificats | [1](#1-installation-derrière-un-proxy-ou-un-miroir) |
-| Tout fonctionne sauf **« Réseau de neurones »**, qui affiche « TensorFlow est installé mais Windows refuse de charger sa bibliothèque native » | le paquet est là, mais sa DLL est bloquée ou une dépendance système manque | [2](#2-tensorflow-ne-se-charge-pas) |
+| Tout fonctionne sauf **« Réseau de neurones »**, qui affiche « TensorFlow 2.x est installé mais Windows refuse de charger sa bibliothèque native » | TensorFlow ≥ 2.16 installé par une v1.2.3 / v1.2.4 ; la 2.15 se charge, elle | [2](#2-tensorflow-ne-se-charge-pas) |
 | « TensorFlow n'est pas installé dans cet environnement » | le miroir interne n'a pas `tensorflow-cpu`, l'installation l'a sauté | [1](#1-installation-derrière-un-proxy-ou-un-miroir) puis [3](#3-se-passer-de-tensorflow) |
 | Le terminal semble figé une minute au premier entraînement | import de TensorFlow ralenti par l'antivirus (normal, une seule fois) | [2](#2-tensorflow-ne-se-charge-pas) |
 
@@ -70,34 +70,37 @@ installez sans lui — voir [3](#3-se-passer-de-tensorflow).
 
 Message typique dans l'interface ou dans `GET /api/ml/capabilities` :
 
-> TensorFlow est installé mais Windows refuse de charger sa bibliothèque
+> TensorFlow 2.20.0 est installé mais Windows refuse de charger sa bibliothèque
 > native (ImportError: DLL load failed while importing
 > _pywrap_tensorflow_internal…)
 
-Le paquet est bien installé ; c'est le chargement de sa DLL qui est refusé.
-Trois causes couvrent l'essentiel des postes d'entreprise, à vérifier dans
-cet ordre :
+**Cause identifiée (v1.2.3 → v1.2.5).** Jusqu'à la v1.2.2, DataVortex figeait
+TensorFlow 2.15.0 et fonctionnait sur les postes d'entreprise. La v1.2.3 a
+ouvert l'intervalle jusqu'à la 2.20 ; `uv tool install` prend la plus récente
+au moment de l'installation, et **les wheels Windows de TensorFlow à partir de
+la 2.16 exigent un runtime Visual C++ 2022 à jour** — présent sur un poste
+personnel (Windows Update, jeux, Visual Studio), pas sur un poste géré sans
+droits admin. La 2.15 réinstallée sur le même poste fonctionne. Depuis la
+**1.2.5**, `pyproject.toml` retient la 2.15 sur Windows (marqueur
+`sys_platform == 'win32'`) ; il suffit de réinstaller :
 
-1. **Runtime Microsoft Visual C++ 2015-2022 absent.** TensorFlow a besoin de
-   `msvcp140.dll`, `vcruntime140.dll` et `vcruntime140_1.dll`. Vérifiez dans
-   « Applications installées » la présence de *Microsoft Visual C++ 2015-2022
-   Redistributable (x64)* ; sinon, demandez son installation (souvent
-   disponible dans le catalogue logiciel interne).
-2. **AppLocker / antivirus qui bloque les DLL du profil utilisateur.**
-   `uv tool install` place l'environnement dans
-   `%LOCALAPPDATA%\uv\tools\datavortex\` ; une politique qui n'autorise
-   l'exécution que depuis `Program Files` bloque `_pywrap_tensorflow_internal.pyd`.
-   Un indice : l'Observateur d'événements → *Journaux des applications et des
-   services → Microsoft → Windows → AppLocker*. Demandez une exception pour
-   ce dossier, ou installez dans un chemin autorisé :
-   `$env:UV_TOOL_DIR = "C:\Outils\uv"; $env:UV_TOOL_BIN_DIR = "C:\Outils\bin"; uv tool install ./datavortex-cli`
-   (chemins approuvés par la DSI ; ajoutez le second au PATH).
-3. **Processeur (ou machine virtuelle) sans AVX.** TensorFlow exige les
-   instructions AVX. Tout processeur physique depuis 2011 les a ; ce sont
-   les machines virtuelles (Citrix, VDI, Hyper-V avec compatibilité de
-   processeur activée) qui les masquent parfois — à vérifier avec
-   l'administrateur de la VM. Sans AVX, seule la section
-   [3](#3-se-passer-de-tensorflow) s'applique.
+```powershell
+uv tool install --force ./datavortex-cli
+datavortex --version      # 1.2.5 ou plus
+```
+
+Avec une version antérieure, ou pour forcer la 2.15 sans réinstaller le reste :
+
+```powershell
+uv tool install --force ./datavortex-cli --python 3.11 --with "tensorflow-cpu<2.16"
+```
+
+Si la 2.15 elle-même ne se charge pas (le diagnostic le dit : « Cette version
+est celle qui se charge d'ordinaire »), c'est autre chose — dans l'ordre :
+runtime *Microsoft Visual C++ 2015-2022 Redistributable (x64)* absent ;
+politique AppLocker/antivirus sur `%LOCALAPPDATA%\uv\tools\` (installer
+ailleurs : `$env:UV_TOOL_DIR`, `$env:UV_TOOL_BIN_DIR`) ; machine virtuelle qui
+masque les instructions AVX. Sinon, section [3](#3-se-passer-de-tensorflow).
 
 La lenteur du **premier** entraînement (jusqu'à une minute) est normale :
 l'antivirus analyse les ~500 Mo de TensorFlow au premier chargement. Les
@@ -142,10 +145,10 @@ uv pip install --no-deps ./backend ./datavortex-cli   # --no-deps : sinon Tensor
 ## 4. Vérifier
 
 ```powershell
-datavortex --version                       # 1.2.4
+datavortex --version                       # 1.2.5
 curl http://127.0.0.1:8000/api/health      # "tensorflow": {"probed": false, ...} — jamais sondé au démarrage
 curl http://127.0.0.1:8000/api/ml/capabilities
-#   {"tensorflow": {"available": true, "version": "2.20.0", ...}, "features": {"neural_network": true, ...}}
+#   {"tensorflow": {"available": true, "version": "2.15.1", ...}, "features": {"neural_network": true, ...}}   (Windows : 2.15.x)
 #   ou, si bloqué : {"available": false, "reason": "...", "hint": "..."}
 ```
 
@@ -153,7 +156,8 @@ curl http://127.0.0.1:8000/api/ml/capabilities
 
 | Environnement | Réseau de neurones | Reste de l'application |
 |---|---|---|
-| Linux x86_64 (CI, Python 3.10–3.12) | ✅ | ✅ |
+| Linux x86_64 (CI, Python 3.10–3.11, TF 2.15 et 2.20) | ✅ | ✅ |
+| Windows (CI windows-latest, TF 2.15) | ✅ | ✅ |
 | Windows 11 personnel | ✅ (retour utilisateur) | ✅ |
-| Windows 11 d'entreprise, DLL bloquée | ⚠️ diagnostic affiché, `--no-tensorflow` | ✅ |
+| Windows 11 d'entreprise | ✅ avec TF 2.15 (retour utilisateur : 2.20 échoue, 2.15 fonctionne) | ✅ |
 | macOS Apple Silicon / Intel | non testé sur cette version | — |
