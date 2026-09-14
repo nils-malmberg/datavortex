@@ -5,8 +5,12 @@ Toutes les erreurs métier renvoient un JSON de la forme :
 """
 from __future__ import annotations
 
+import logging
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger("datavortex.api")
 
 
 class AppError(Exception):
@@ -27,6 +31,9 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
 
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    # La réponse ne porte que le message ; la trace complète va dans le journal
+    # du serveur, seul endroit où l'on peut comprendre un échec inattendu.
+    logger.exception("Erreur interne sur %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
         content={

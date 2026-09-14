@@ -28,7 +28,8 @@ Le `code` est stable (à tester par les clients), le `message` est un texte lisi
 | `TASK_NOT_FOUND` | 404 | Tâche de fond inconnue ou dont le résultat a expiré |
 | `INVALID_ENCODING` | 400 | Encoding d'export inconnu |
 | `INVALID_SEPARATOR_REGEX` | 400 | Motif de séparateur invalide, ou acceptant la chaîne vide |
-| `INTERNAL_ERROR` | 500 | Erreur non anticipée (bug) |
+| `TENSORFLOW_UNAVAILABLE` | 503 | Réseau de neurones ou export TFLite demandé alors que TensorFlow ne se charge pas (DLL bloquée, paquet absent) ou est désactivé (`DATAVORTEX_NO_TENSORFLOW`). Le message contient la cause et la piste ; voir `GET /api/ml/capabilities` (Phase 10.4). |
+| `INTERNAL_ERROR` | 500 | Erreur non anticipée (bug) — la trace complète est dans le journal du serveur |
 
 Il n'y a pas de rate limiting (usage local mono-utilisateur).
 
@@ -38,7 +39,7 @@ Il n'y a pas de rate limiting (usage local mono-utilisateur).
 
 | Route | Description |
 |---|---|
-| `GET /api/health` | État du serveur : empreinte mémoire (`memory.rss_mb`), durée de fonctionnement, tâches de fond en cours, statistiques du cache (`cache.hit_rate`), disponibilité de Polars. |
+| `GET /api/health` | État du serveur : empreinte mémoire (`memory.rss_mb`), durée de fonctionnement, tâches de fond en cours, statistiques du cache (`cache.hit_rate`), disponibilité de Polars, état de TensorFlow **sans le sonder** (`tensorflow.probed: false` tant qu'aucune fonctionnalité ne l'a chargé — l'import peut prendre une minute, il n'a pas sa place dans un contrôle de santé). |
 | `POST /api/upload` | Upload d'un fichier (`multipart/form-data`, champ `file`). Détecte le format depuis l'extension — CSV, CSV.GZ/BZ2/ZIP, Parquet (toute compression interne), Feather, Excel, JSON (Phase 10) — l'encoding et, pour un CSV, propose un séparateur. Retourne un `session_id`, `format` (ex: `"csv_gz"`) et `file_info` (taille, compression, taille décompressée estimée). |
 | `GET /api/version` | Numéro de version du serveur, seul (`{"version": "1.2.1"}`). |
 | `POST /api/parse` | Parse définitivement la session avec le séparateur choisi (`{session_id, separator, separator_type}`). `separator_type` vaut `"preset"` (défaut : séparateur littéral) ou `"regex"` (Phase 10.2 : motif tel que `\s+`, `[,;]`, `\s*,\s*` — validé avant analyse, `INVALID_SEPARATOR_REGEX` sinon ; toujours traité par le moteur Python de pandas, le seul à découper sur une expression régulière). Retourne `n_rows`, `n_columns`, `columns`, `column_types`, et `metrics` (durée, débit, moteur d'analyse retenu : `polars`, `pandas-c` ou `pandas-python`). Sans objet pour Parquet/Feather/Excel/JSON, déjà analysés à l'upload (`already_parsed: true`). |
@@ -77,9 +78,9 @@ Il n'y a pas de rate limiting (usage local mono-utilisateur).
 | `POST /api/plot/2d` | Graphique 2D (`Plot2DRequest` : `x`, `y`, `plot_type`, `color_by`, `size_by`). |
 | `POST /api/plot/3d` | Graphique 3D (`Plot3DRequest` : `x`, `y`, `z`, `plot_type`). |
 | `POST /api/plot/advanced` | Graphiques avancés (`AdvancedPlotRequest`) : types étendus (pair/joint/ridge/strip…), `trend` (tendance + confiance), `overlays` (moyenne/médiane/écart-type), `style` (palette, daltonisme, annotations, thème). |
-| `POST /api/export/plot` | Exporte un graphique déjà généré (`ExportPlotRequest` : `kind` parmi `1d`/`2d`/`3d`/`ml`/`advanced`/`multi-series`/`subplots`, `params` du graphique d'origine, `format: "png"|"svg"|"html"`). |
+| `POST /api/export/plot` | Exporte un graphique déjà généré (`ExportPlotRequest` : `kind` parmi `1d`/`2d`/`3d`/`ml`/`advanced`/`multi-series`/`subplots`, `params` du graphique d'origine, `format: "png"|"svg"|"html"`, `width`/`height`). Une grille de sous-graphiques n'est jamais rendue plus petite que sa taille intrinsèque (Phase 10.4) : `width`/`height` sont des minima pour elle. |
 | `POST /api/plot/multi-series` | Graphique multi-séries à axe Y secondaire optionnel (Phase 10) : `MultiSeriesPlotRequest` — `x_axis`, `series: [{y_column, y_axis: "left"|"right", plot_type: "scatter"|"line"|"bar"|"area", name, color}]` (1 à 10 séries), plus `trend` et `style` comme `/plot/advanced` (Phase 10.1). |
-| `POST /api/plot/subplots` | Grille de sous-graphiques indépendants (Phase 10.1) : `SubplotGridRequest` — `rows`/`cols` (1 à 4), `subplots: [{plot_type, x, y, title, color}]`, `style`. Les types `histogram`/`box`/`violin` ne demandent qu'une colonne (`y`) ; `bar` agrège par modalité. |
+| `POST /api/plot/subplots` | Grille de sous-graphiques indépendants (Phase 10.1) : `SubplotGridRequest` — `rows`/`cols` (1 à 4), `subplots: [{plot_type, x, y, title, color}]`, `style`. Les types `histogram`/`box`/`violin` ne demandent qu'une colonne (`y`) ; `bar` agrège par modalité. La figure déclare sa taille (Phase 10.4) : `layout.height` = 500 px par ligne (520 minimum) et `layout.meta.grid = {rows, cols, min_width}` (420 px par colonne) — un client doit lui donner cette hauteur et laisser défiler horizontalement sous `min_width`, sinon les cases se compriment. |
 
 ## GroupBy & Pivot
 
@@ -98,7 +99,8 @@ Il n'y a pas de rate limiting (usage local mono-utilisateur).
 | `POST /api/ml/classification` | Entraîne un modèle de classification (`ClassificationRequest`). Retourne accuracy/précision/rappel/F1, matrice de confusion, ROC/AUC si applicable. |
 | `POST /api/ml/clustering` | Clustering (`ClusteringRequest`). Retourne silhouette/Davies-Bouldin/Calinski-Harabasz, tailles de cluster, courbe du coude pour k-means. |
 | `POST /api/ml/pca` | Réduction de dimension (`PCARequest` : `method: "pca"|"tsne"|"umap"`, `n_components: 2|3`). |
-| `POST /api/ml/neural_network` | Entraîne un réseau de neurones (`NeuralNetworkRequest` : `layers`, `optimizer`, `learning_rate`, `batch_size`, `epochs`). Entraînement réel TensorFlow/Keras, retourne courbes de perte et poids pour le diagramme du réseau. |
+| `GET /api/ml/capabilities` | Ce que ce serveur sait faire en ML (Phase 10.4) : `tensorflow: {available, probed, version, disabled_by, reason, hint}` et `features: {scikit_learn, neural_network, tflite_export}`. Sonde TensorFlow (import mémorisé : la première réponse peut prendre jusqu'à une minute). `reason`/`hint` sont rédigés pour l'utilisateur final (runtime Visual C++, AppLocker, AVX…). |
+| `POST /api/ml/neural_network` | Entraîne un réseau de neurones (`NeuralNetworkRequest` : `layers`, `optimizer`, `learning_rate`, `batch_size`, `epochs`). Entraînement réel TensorFlow/Keras, retourne courbes de perte et poids pour le diagramme du réseau. `TENSORFLOW_UNAVAILABLE` (503) si TensorFlow ne se charge pas ou est désactivé. |
 | `POST /api/ml/export/model` | Exporte un modèle entraîné (`ModelExportRequest` : `model_id`, `format: "joblib"|"pickle"|"json"|"onnx"|"tflite"`). |
 | `POST /api/ml/export/metadata` | Métadonnées d'entraînement d'un modèle (`ModelMetadataRequest`). |
 | `POST /api/ml/export/training_script` | Génère un notebook Python reproduisant l'entraînement (`TrainingScriptRequest`). |
@@ -199,7 +201,7 @@ suppression de colonne, nouveau parsing) : un résultat calculé avant un filtre
 n'est jamais servi après. `GET /api/health` remonte `cache: {entries, hits,
 misses, hit_rate}`, et la fermeture d'une session purge ses entrées.
 
-## Variables d'environnement (Phases 9 à 10.1)
+## Variables d'environnement (Phases 9 à 10.4)
 
 | Variable | Défaut | Effet |
 |---|---|---|
@@ -207,4 +209,5 @@ misses, hit_rate}`, et la fermeture d'une session purge ses entrées.
 | `DATAVORTEX_SPILL_MB` | `50` | Taille à partir de laquelle le fichier source est déversé sur disque plutôt que conservé en mémoire. |
 | `DATAVORTEX_MAX_DECOMPRESSED_MB` | `500` | Taille maximale acceptée pour un CSV compressé une fois décompressé (Phase 10). Alignée par défaut sur la limite d'upload : la compression réduit le transfert réseau, pas le budget mémoire du pipeline. |
 | `DATAVORTEX_MAX_PLOT_POINTS` | `50000` | Nombre maximal de points transportés par une trace point à point (Phase 10.1). Une figure Plotly embarque ses données : sans plafond, un nuage de points sur 3,2 millions de lignes pèse 36 Mo de JSON et bloque l'onglet du navigateur. Les calculs (tendance, repères) restent faits sur toutes les données. |
+| `DATAVORTEX_NO_TENSORFLOW` (alias `DATAVORTEX_NO_ML`) | *(désactivé)* | À `1`, TensorFlow n'est jamais importé : réseau de neurones et export TFLite répondent `TENSORFLOW_UNAVAILABLE`, les méthodes scikit-learn sont intactes (Phase 10.4). Équivalent du drapeau `datavortex --no-tensorflow`. Pour les postes d'entreprise où la bibliothèque native est bloquée : `backend/CORPORATE_SETUP.md`. |
 | `DATAVORTEX_PROFILE` | *(désactivé)* | À `1`, journalise (module `datavortex.profiling`) le détail cProfile et le pic mémoire tracemalloc de l'agrégation et des statistiques avancées. Désactivé par défaut : le profilage a un coût réel. |

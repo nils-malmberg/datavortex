@@ -1,6 +1,6 @@
 # DataVortex
 
-**v1.2.3 — Production Ready ✅**
+**v1.2.4 — Production Ready ✅**
 
 DataVortex est une plateforme interactive de visualisation et d'analyse de données : importez un fichier CSV/Excel/JSON, explorez-le statistiquement, visualisez-le, filtrez-le et enrichissez-le, entraînez des modèles de machine learning, et exportez tout ça — données, graphiques, modèles ou rapport PDF complet — le tout depuis un navigateur, sans envoyer vos données où que ce soit hors de votre machine.
 
@@ -64,7 +64,7 @@ DataVortex est une plateforme interactive de visualisation et d'analyse de donn�
 
 `uv` gère lui-même la version de Python : il télécharge automatiquement un interpréteur 3.10–3.12 compatible si le vôtre n'en a pas (aucune installation manuelle de Python requise).
 
-Les dépendances sont déclarées par intervalles, pas figées : sur un miroir d'entreprise ou derrière un proxy, voir [backend/COMPATIBILITY.md](backend/COMPATIBILITY.md) (versions testées, miroir PyPI interne, certificats, installation hors ligne).
+Les dépendances sont déclarées par intervalles, pas figées (versions testées : [backend/COMPATIBILITY.md](backend/COMPATIBILITY.md)). Sur un poste d'entreprise — miroir PyPI interne, proxy, politiques qui bloquent TensorFlow — suivez [backend/CORPORATE_SETUP.md](backend/CORPORATE_SETUP.md).
 
 > **DataVortex n'est pas publié sur PyPI** (le nom `datavortex` y est déjà pris par un paquet sans rapport) — l'installation se fait directement depuis ce dépôt Git, pas via `uv tool install datavortex` seul.
 

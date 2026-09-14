@@ -31,8 +31,14 @@ def test_help_flag_lists_all_documented_options(capsys):
         main(["--help"])
     assert exc_info.value.code == 0
     out = capsys.readouterr().out
-    for flag in ("--port", "--host", "--open", "--help-browser", "--version"):
+    for flag in ("--port", "--host", "--open", "--help-browser", "--no-tensorflow", "--version"):
         assert flag in out
+
+
+def test_no_tensorflow_flag_is_parsed():
+    args = build_parser().parse_args(["--no-tensorflow"])
+    assert args.no_tensorflow is True
+    assert build_parser().parse_args([]).no_tensorflow is False
 
 
 def test_default_port_is_8000_without_env_override(monkeypatch):

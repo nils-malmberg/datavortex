@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import threading
 import webbrowser
@@ -58,6 +59,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Démarre le serveur et ouvre directement l'aide intégrée dans le navigateur",
     )
     parser.add_argument(
+        "--no-tensorflow",
+        action="store_true",
+        help="N'utilise pas TensorFlow (réseau de neurones et export TFLite indisponibles ; "
+             "le reste du ML, scikit-learn, fonctionne). Équivalent à DATAVORTEX_NO_TENSORFLOW=1. "
+             "Utile sur un poste d'entreprise où sa bibliothèque native est bloquée",
+    )
+    parser.add_argument(
         "--version", "-v",
         action="version",
         version=f"%(prog)s {__version__}",
@@ -69,8 +77,15 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    if args.no_tensorflow:
+        # Lu par app.ml_backend au premier besoin de TensorFlow : posé avant
+        # l'import de app.main pour que rien ne tente le chargement de la DLL.
+        os.environ["DATAVORTEX_NO_TENSORFLOW"] = "1"
+
     url = f"http://{args.host}:{args.port}"
     print(BANNER.format(version=__version__, url=url))
+    if args.no_tensorflow:
+        print("TensorFlow désactivé (--no-tensorflow) : réseau de neurones et export TFLite indisponibles.")
     print("Chargement des modules (première initialisation, quelques secondes)...")
 
     # Import différé : charger app.main (pandas/scikit-learn/tensorflow...)

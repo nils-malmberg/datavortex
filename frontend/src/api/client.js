@@ -153,6 +153,14 @@ export function runNeuralNetwork(sessionId, { features, target, task, layers, op
   })
 }
 
+/**
+ * Ce que le serveur sait faire en ML (Phase 10.4). Sonde TensorFlow côté
+ * serveur : l'appel peut durer quelques secondes la première fois.
+ */
+export function getMlCapabilities() {
+  return api.get('/ml/capabilities')
+}
+
 export function exportModel(sessionId, modelId, format) {
   return api.post(
     '/ml/export/model',

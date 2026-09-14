@@ -269,6 +269,17 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
   if (columns.length === 0) return <Loading>Chargement des colonnes…</Loading>
 
   const layoutMode = spec.layout_mode || 'single'
+  // Taille intrinsèque de la figure (grille de sous-graphiques) ; un graphique
+  // simple ne déclare rien et garde l'aperçu de 520 px.
+  const gridMeta = figure?.layout?.meta?.grid
+  const previewHeight = figure?.layout?.height || 520
+  const previewMinWidth = gridMeta?.min_width
+  const styleWidth = Math.round((spec.style.width * spec.style.dpi) / 100)
+  const styleHeight = Math.round((spec.style.height * spec.style.dpi) / 100)
+  // L'export ne descend jamais sous la taille intrinsèque (le serveur l'impose
+  // aussi) ; on affiche la valeur réelle pour ne pas mentir dans le menu.
+  const exportWidth = Math.max(styleWidth, previewMinWidth || 0)
+  const exportHeight = Math.max(styleHeight, figure?.layout?.height || 0)
   // `kind` attendu par /api/export/plot et /api/report/pdf pour ce mode.
   const exportKind = { multi_series: 'multi-series', subplots: 'subplots' }[layoutMode] || 'advanced'
   const config = plotConfig(spec.plot_type)
@@ -348,16 +359,22 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
               <p className="text-sm text-slate-400 dark:text-slate-500">Génération du graphique…</p>
             </div>
           ) : (
-            <ThemedPlot
-              data={figure.data}
-              layout={figure.layout}
-              height={520}
-              exportName={describeSpec(spec)}
-              useFigureTheme={spec.style.theme !== 'auto'}
-              onGraphDiv={(gd) => {
-                graphDiv.current = gd
-              }}
-            />
+            // Une grille de sous-graphiques déclare sa hauteur (500 px par
+            // ligne) et sa largeur minimale (`layout.meta.grid`) : l'aperçu les
+            // respecte et défile au lieu de comprimer les cases (Phase 10.4).
+            <div className="max-h-[85vh] overflow-auto">
+              <ThemedPlot
+                data={figure.data}
+                layout={figure.layout}
+                height={previewHeight}
+                minWidth={previewMinWidth}
+                exportName={describeSpec(spec)}
+                useFigureTheme={spec.style.theme !== 'auto'}
+                onGraphDiv={(gd) => {
+                  graphDiv.current = gd
+                }}
+              />
+            </div>
           )}
 
           {/* Barre d'outils flottante : Personnaliser | Enregistrer | Exporter | Partager */}
@@ -377,8 +394,8 @@ export default function PlotBuilder({ sessionId, refreshKey, onAddToReport }) {
               params={lastPayload}
               disabled={!figure || isLoading}
               compact
-              width={Math.round((spec.style.width * spec.style.dpi) / 100)}
-              height={Math.round((spec.style.height * spec.style.dpi) / 100)}
+              width={exportWidth}
+              height={exportHeight}
             />
             <button onClick={shareConfig} disabled={!figure} className={BUTTON_CLASS} title="Copier la configuration du graphique">
               Partager

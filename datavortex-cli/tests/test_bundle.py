@@ -21,6 +21,7 @@ RECENT_UI_MARKERS = {
     "Phase 10.1 — grille de sous-graphiques": "Taille de la grille",
     "Phase 10.1 — sélecteur de disposition": "Multi-séries",
     "Phase 10.2 — séparateur regex": "Motif de séparateur",
+    "Phase 10.4 — diagnostic TensorFlow": "Réseau de neurones indisponible sur ce serveur",
 }
 
 

@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
 from app.errors import AppError
 from app.ml import PALETTE, _clean_subset, _encode_features, _permutation_feature_importance, _require_columns
+from app.ml_backend import require_tensorflow
 
 RANDOM_STATE = 42
 MAX_LAYERS = 8
@@ -36,9 +37,13 @@ MIN_SAMPLES = 20
 
 
 def _tf():
-    """Importe TensorFlow au dernier moment (cf. note en tête de fichier)."""
-    import tensorflow as tf
-    return tf
+    """Importe TensorFlow au dernier moment (cf. note en tête de fichier).
+
+    Si l'import échoue (DLL bloquée sur un poste d'entreprise, paquet absent,
+    désactivation explicite), `require_tensorflow` renvoie une 503 avec la
+    cause et la piste, au lieu d'une erreur interne opaque.
+    """
+    return require_tensorflow()
 
 
 def _build_model(input_dim: int, layers: list[dict], output_units: int, output_activation: str, loss: str,

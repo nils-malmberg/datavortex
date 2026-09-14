@@ -2,6 +2,23 @@
 
 Toutes les phases de développement notables de DataVortex sont documentées ici, de la plus récente à la plus ancienne. Format inspiré de [Keep a Changelog](https://keepachangelog.com/), adapté au déroulé par phases de ce projet.
 
+## [1.2.4] — 2026-09-14 — Grille de sous-graphiques lisible, TensorFlow expliqué
+
+### Corrigé
+- **Grille de sous-graphiques : cases écrasées et superposées dès 3 lignes ou 2 colonnes.** La figure déclarait une hauteur (280 px par ligne) mais l'aperçu la rendait dans une boîte fixe de 520 px — et Plotly respecte une hauteur déclarée : la figure débordait sur la barre d'outils pendant que ses colonnes se comprimaient à la largeur du conteneur. L'export image (900x600) et le rapport PDF (1000x650) l'écrasaient de la même façon. Une grille a maintenant une taille intrinsèque — **500 px par ligne, 420 px minimum par colonne** — portée par la figure (`layout.height`, `layout.meta.grid`) : l'aperçu la respecte et défile (verticalement au-delà de 85 % de la fenêtre, horizontalement sous la largeur minimale), l'export image ne descend jamais en dessous, le rapport PDF la rend à ses proportions puis la réduit pour tenir dans la page. L'espace entre deux lignes est fixé à 110 px au lieu d'une fraction de la hauteur. Vérifié dans un Chrome headless avec une grille 3x2 réelle, avant et après.
+- **« Réseau de neurones » sur un Windows 11 d'entreprise : « Erreur interne inattendue : DLL load failed while importing _pywrap_tensorflow_internal… ».** Le paquet TensorFlow est installé mais Windows refuse de charger sa bibliothèque native (runtime Visual C++ absent, politique AppLocker sur le profil utilisateur, VM sans AVX) — un poste personnel n'a pas ces contraintes, d'où la différence. L'échec d'import est désormais diagnostiqué en français (cause + piste), renvoyé en `503 TENSORFLOW_UNAVAILABLE` par le réseau de neurones et l'export TFLite, et affiché dans l'onglet ML avant même de lancer un entraînement. **Les 19 autres méthodes ML (scikit-learn) ne dépendent pas de TensorFlow et n'ont jamais été touchées** ; l'interface le rappelle.
+- Les erreurs internes non anticipées sont journalisées avec leur trace complète côté serveur (jusqu'ici, seule la première ligne partait dans la réponse HTTP).
+
+### Ajouté
+- `GET /api/ml/capabilities` : `tensorflow: {available, version, reason, hint, …}` et `features: {scikit_learn, neural_network, tflite_export}`. Sonde TensorFlow une fois pour toutes (import mémorisé). `GET /api/health` remonte le même état **sans sonder** — l'import peut prendre une minute.
+- `DATAVORTEX_NO_TENSORFLOW=1` (alias `DATAVORTEX_NO_ML=1`, nom du plan) et `datavortex --no-tensorflow` : TensorFlow n'est jamais importé, le réseau de neurones et l'export TFLite s'annoncent indisponibles, tout le reste fonctionne.
+- `backend/CORPORATE_SETUP.md` : symptômes → causes → pistes pour un poste d'entreprise (miroir PyPI, proxy TLS, hors ligne, DLL bloquée, installation sans TensorFlow avec `--no-deps`), et comment vérifier.
+- Tests : taille intrinsèque de la grille et export/PDF qui la respectent (`test_subplots.py`), échec d'import TensorFlow simulé sur chaque surface (`test_ml_backend.py`, 13 tests), drapeau CLI.
+
+### Notes
+- Le plan proposait de **retirer TensorFlow** des dépendances (« should find NOTHING if using PyTorch only »). Le projet n'utilise pas PyTorch : TensorFlow/Keras est le moteur du réseau de neurones et de l'export TFLite (Phase 8.1). Il reste donc une dépendance ; ce qui change, c'est qu'il ne peut plus faire échouer que les deux fonctionnalités qui en ont besoin, en expliquant pourquoi.
+- Le frontend est recompilé et le bundle commité (`./build.sh`) : `test_bundle.py` vérifie qu'il contient bien la bannière TensorFlow de la Phase 10.4.
+
 ## [1.2.3] — 2026-09-11 — Dépendances par intervalles, Python 3.12
 
 > Le tag `v1.2.2` pointe sur la fusion de la Phase 10.2 : son contenu est celui de l'entrée 1.2.1 ci-dessous (les paquets s'y annoncent encore en 1.2.1). Il n'y a pas d'entrée 1.2.2 distincte.

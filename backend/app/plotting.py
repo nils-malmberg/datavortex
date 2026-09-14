@@ -516,6 +516,33 @@ def _apply_common_style(fig: go.Figure, style) -> None:
 # Grille de sous-graphiques (Phase 10.1)
 # --------------------------------------------------------------------------
 
+# Phase 10.4 : une grille a une taille intrinsèque, contrairement à un
+# graphique simple qui épouse son conteneur. Sans ça, une grille 3x2 rendue
+# dans les 520 px de l'aperçu (ou les 600 px d'un export) écrasait chaque
+# case et superposait titres et axes. Chaque ligne garde donc 500 px, chaque
+# colonne au moins 420 px ; l'aperçu, l'export image et le rapport PDF lisent
+# ces valeurs sur la figure (`layout.height`, `layout.meta.grid`).
+SUBPLOT_ROW_PX = 500
+SUBPLOT_COL_PX = 420
+SUBPLOT_MIN_HEIGHT = 520  # une seule ligne : même hauteur qu'un graphique simple
+SUBPLOT_ROW_GAP_PX = 110  # titre d'axe X d'une ligne + titre de la case suivante
+
+
+def subplot_grid_size(rows: int, cols: int) -> tuple[int, int]:
+    """(largeur minimale, hauteur) en pixels d'une grille rows x cols."""
+    return SUBPLOT_COL_PX * cols, max(SUBPLOT_MIN_HEIGHT, SUBPLOT_ROW_PX * rows)
+
+
+def intrinsic_size(fig: go.Figure, default_width: int, default_height: int) -> tuple[int, int]:
+    """Taille de rendu d'une figure : jamais plus petite que ce qu'elle déclare.
+
+    Une grille impose sa hauteur et une largeur minimale ; un graphique simple
+    ne déclare rien et prend les valeurs demandées.
+    """
+    meta = fig.layout.meta if isinstance(fig.layout.meta, dict) else {}
+    min_width = int((meta.get("grid") or {}).get("min_width") or 0)
+    return max(default_width, min_width), max(default_height, int(fig.layout.height or 0))
+
 def _subplot_trace(df: pd.DataFrame, spec, color: str):
     """Trace unique d'une case de la grille, selon son type."""
     if spec.plot_type in ("histogram", "box", "violin"):
@@ -571,7 +598,15 @@ def build_subplot_figure(df: pd.DataFrame, req) -> go.Figure:
         )
 
     titles = [spec.title or f"Graphique {i + 1}" for i, spec in enumerate(req.subplots)]
-    fig = make_subplots(rows=req.rows, cols=req.cols, subplot_titles=titles)
+    min_width, height = subplot_grid_size(req.rows, req.cols)
+    # L'espacement Plotly est une fraction de la hauteur : avec des lignes de
+    # 500 px, la valeur par défaut (0.3 / rows) creuserait 150 px de vide entre
+    # deux lignes. 110 px suffisent au titre d'axe X et au titre de la case
+    # suivante.
+    fig = make_subplots(
+        rows=req.rows, cols=req.cols, subplot_titles=titles,
+        vertical_spacing=SUBPLOT_ROW_GAP_PX / height if req.rows > 1 else 0,
+    )
 
     sampled_any = False
     for index, spec in enumerate(req.subplots):
@@ -588,7 +623,11 @@ def build_subplot_figure(df: pd.DataFrame, req) -> go.Figure:
     fig.update_layout(
         title=req.title or f"Grille {req.rows}x{req.cols}",
         showlegend=False,  # chaque case porte déjà son titre : la légende ferait doublon
-        height=max(400, 280 * req.rows),
+        # `height` seul : Plotly respecte une hauteur déclarée mais continue
+        # d'adapter la largeur au conteneur (autosize) ; la largeur minimale
+        # passe par `meta` pour que le conteneur puisse défiler horizontalement.
+        height=height,
+        meta={"grid": {"rows": req.rows, "cols": req.cols, "min_width": min_width}},
     )
     _apply_common_style(fig, getattr(req, "style", None))
     if sampled_any:
