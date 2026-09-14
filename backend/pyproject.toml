@@ -1,6 +1,6 @@
 [project]
 name = "datavortex-backend"
-version = "1.2.3"
+version = "1.2.4"
 description = "DataVortex - Backend FastAPI pour visualisation et analyse de données"
 # Phase 10.3 : bornes larges plutôt que versions figées, pour que le paquet
 # s'installe depuis un miroir d'entreprise qui n'a pas exactement nos wheels.

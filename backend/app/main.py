@@ -128,7 +128,7 @@ MAX_UPLOAD_SIZE_BYTES = 500 * 1024 * 1024  # 500MB
 PREVIEW_ROWS = 100
 
 # Alignée sur les autres numéros de version du dépôt par scripts/sync-versions.py.
-__version__ = "1.2.3"
+__version__ = "1.2.4"
 
 app = FastAPI(title="DataVortex API", version=__version__)
 
