@@ -29,9 +29,13 @@ dependencies = [
     # de normalité : plafond explicite tant que ce format n'est pas revu.
     "scipy>=1.10.0,<1.19.0",
     # kaleido 1.x exige un Chrome installé pour exporter les images : on reste
-    # sur 0.2.x, autonome, et sur plotly 5 qui le pilote encore.
+    # sur 0.x, autonome, et sur plotly 5 qui le pilote encore. Sur Windows,
+    # la 0.2.1 bloque indéfiniment `to_image` (export PNG, rapport PDF) —
+    # constaté en CI (windows-latest) ; la 0.1.0.post1, publiée par kaleido
+    # précisément pour ce cas et uniquement en wheels Windows, fonctionne.
     "plotly>=5.10.0,<6.0.0",
-    "kaleido>=0.2.1,<1.0.0",
+    "kaleido>=0.2.1,<0.3.0; sys_platform != 'win32'",
+    "kaleido>=0.1.0.post1,<0.2.0; sys_platform == 'win32'",
     "python-multipart>=0.0.6,<0.1.0",
     "chardet>=4.0.0,<6.0.0",
     "openpyxl>=3.1.0,<4.0.0",

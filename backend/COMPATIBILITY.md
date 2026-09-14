@@ -38,7 +38,7 @@ résout aujourd'hui, exécuté sur Python 3.10 et 3.11 (Linux), et sur Windows e
 | numpy | `>=1.24.0,<3.0.0` | 1.24.0 | 2.2.6 (3.10) · 2.4.6 (3.11) · 1.26.4 (Windows, imposé par TF 2.15) | NumPy 2 passe la suite ; le plafond est la prochaine majeure |
 | scipy | `>=1.10.0,<1.19.0` | 1.10.0 | 1.15.3 (3.10) · 1.17.1 (3.11) | **1.19 retirera `critical_values` du résultat d'`anderson`**, utilisé par les tests de normalité (avertissement depuis 1.17) |
 | plotly | `>=5.10.0,<6.0.0` | 5.10.0 | 5.24.1 | 5.10 = `texttemplate` sur les heatmaps ; Plotly 6 exige kaleido 1 |
-| kaleido | `>=0.2.1,<1.0.0` | 0.2.1 | 0.2.1 | kaleido 1.x exige un Chrome installé sur le poste |
+| kaleido | Linux/macOS `>=0.2.1,<0.3.0` · **Windows `>=0.1.0.post1,<0.2.0`** | 0.2.1 | 0.2.1 (Windows : 0.1.0.post1) | kaleido 1.x exige un Chrome installé sur le poste ; **sur Windows la 0.2.1 bloque `to_image` indéfiniment** (constaté en CI : export PNG et rapport PDF ne rendaient jamais la main), la 0.1.0.post1 — publiée par kaleido pour ce cas, en wheels Windows uniquement — fonctionne |
 | python-multipart | `>=0.0.6,<0.1.0` | 0.0.6 | 0.0.32 | |
 | chardet | `>=4.0.0,<6.0.0` | 4.0.0 | 5.2.0 | |
 | openpyxl | `>=3.1.0,<4.0.0` | 3.1.0 | 3.1.5 | 3.0.x utilise `np.float`, retiré de NumPy 1.24 |

@@ -9,8 +9,11 @@ Toutes les phases de développement notables de DataVortex sont documentées ici
 - Conséquence : **`requires-python` revient à `<3.12`** (la 2.15 n'a pas de wheel cp312, et une fenêtre Python par plateforme n'existe pas). Le support 3.12 ajouté en 1.2.3 n'avait été demandé par personne ; il repartira quand une version ≥ 2.16 sera vérifiée sur un poste d'entreprise.
 - Le diagnostic de la 1.2.4 nomme maintenant la version installée (lue dans les métadonnées, sans importer) et, quand elle est ≥ 2.16 sur Windows, dit exactement ça et comment réinstaller — au lieu d'énumérer trois causes possibles.
 
+- **Export PNG et rapport PDF qui ne rendaient jamais la main sur Windows** — trouvé par le nouveau job CI Windows (la suite y restait bloquée sur le premier `to_image`). kaleido 0.2.1, figé depuis la Phase 4, bloque indéfiniment sur Windows ; kaleido a publié la 0.1.0.post1 (wheels Windows uniquement) précisément pour ce cas. Windows la retient désormais, Linux/macOS gardent la 0.2.1. Si tu n'avais jamais réussi un export image ou un rapport PDF sur Windows, c'était ça.
+- Sur Windows, le wheel `tensorflow-cpu` est une coquille de 2 Ko dépendant de `tensorflow-intel` (la build Windows de TensorFlow, maintenue par Intel — elle tourne sur tout x86-64, AMD compris : le job CI la charge sur un AMD EPYC 7763) ; uv lisait les métadonnées du wheel Linux et ne voyait pas cette dépendance, si bien qu'un `uv sync` Windows n'installait aucun TensorFlow. `tensorflow-intel` est déclaré directement.
+
 ### Ajouté
-- Job CI `backend-windows` (windows-latest, Python 3.11) : vérifie que la résolution Windows retient la 2.15, qu'elle se charge, et que la suite passe. **Windows n'était couvert par aucun test** : c'est ainsi que la 2.20 a cassé sans que rien ne le voie.
+- Job CI `backend-windows` (windows-latest, Python 3.11, **AMD EPYC**) : vérifie que la résolution Windows retient TensorFlow 2.15, qu'il se charge, et que la suite passe. **Windows n'était couvert par aucun test** : c'est ainsi que la 2.20 a cassé sans que rien ne le voie — et que le blocage kaleido est resté invisible.
 
 ### Notes
 - `CORPORATE_SETUP.md` est recentré sur cette cause ; les pistes « runtime absent / AppLocker / AVX » ne restent que pour le cas où la 2.15 elle-même ne se charge pas.

@@ -73,9 +73,12 @@ jobs:
       - name: TensorFlow resolves to 2.15 and loads
         run: uv run python -c "import tensorflow as tf; assert tf.__version__.startswith('2.15.'), tf.__version__; print('TensorFlow', tf.__version__)"
 
+      # Plafond : kaleido 0.2.1 bloquait `to_image` indéfiniment sur Windows
+      # (d'où le marqueur kaleido de pyproject.toml) ; un blocage doit
+      # échouer vite, pas occuper le runner six heures.
       - name: Run tests
         timeout-minutes: 15
-        run: uv run pytest -v -p no:cacheprovider
+        run: uv run pytest -q -p no:cacheprovider
 
   backend-lowest:
     # L'autre extrémité des intervalles : chaque dépendance directe à son
